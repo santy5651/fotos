@@ -123,7 +123,7 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
               fill
               sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, (max-width: 1280px) 25vw, 20vw"
               style={{ 
-                objectFit: 'cover',
+                objectFit: 'contain',
                 transform: `rotate(${currentRotation}deg)` 
               }}
               className="transition-transform duration-300 ease-in-out group-hover:scale-105"
@@ -286,3 +286,4 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
     </>
   );
 }
+
