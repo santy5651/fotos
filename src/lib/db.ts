@@ -52,21 +52,29 @@ export const addImage = async (image: Omit<ImageMetadata, 'id' | 'createdAt' | '
 };
 
 export const getImages = async (filter?: { collectionId?: number; searchTerm?: string }): Promise<ImageMetadata[]> => {
-  let query = db.images.orderBy('createdAt').reverse();
+  let imageQuery = db.images.orderBy('createdAt').reverse();
 
+  // Apply collection filter
   if (filter?.collectionId) {
-    query = query.filter(img => img.collectionIds.includes(filter.collectionId!));
+    // If a specific collection is selected, show images from that collection OR images not in any collection.
+    imageQuery = imageQuery.filter(img => 
+      (img.collectionIds && img.collectionIds.includes(filter.collectionId!)) || 
+      (!img.collectionIds || img.collectionIds.length === 0)
+    );
   }
+  // Note: If filter.collectionId is null/undefined (e.g. "All Images"), the above block is skipped, 
+  // and all images are considered by default, which is correct.
   
+  // Apply search term filter
   if (filter?.searchTerm) {
     const term = filter.searchTerm.toLowerCase();
-    query = query.filter(img => 
+    imageQuery = imageQuery.filter(img => 
       img.name.toLowerCase().includes(term) || 
       (img.tags && img.tags.some(tag => tag.toLowerCase().includes(term)))
     );
   }
   
-  return query.toArray();
+  return imageQuery.toArray();
 };
 
 export const getImageById = async (id: number): Promise<ImageMetadata | undefined> => {
@@ -157,152 +165,145 @@ export const deleteCollection = async (id: number): Promise<void> => {
 
 // Data Management
 export const exportData = async (): Promise<{ metadataJson: string, imageFiles: { name: string, blob: Blob }[] }> => {
-  console.log("Exporting: Fetching all images and collections from DB...");
+  console.log("[EXPORT DEBUG] Exporting: Fetching all images and collections from DB...");
   const images = await db.images.toArray();
   const collections = await db.collections.toArray();
-  console.log(`Exporting: Found ${images.length} images and ${collections.length} collections.`);
+  console.log(`[EXPORT DEBUG] Exporting: Found ${images.length} images and ${collections.length} collections.`);
 
   const metadata = {
     version: 2, // Current data version
     collections: collections.map(c => {
-      // Strip transient properties before export
       const { children, imageCount, ...rest } = c; 
       return rest;
     }),
     images: images.map(img => {
-      // Strip transient properties and the actual File object for metadata
       const { file, dataUri, transform, ...rest } = img; 
-      // Sanitize original name for use in filename to avoid issues with special characters
       const sanitizedName = (img.name || `image_${img.id}`).replace(/[^a-zA-Z0-9_.-]/g, '_');
-      const fileNameInZip = `img_${img.id}_${sanitizedName}`;
-      return { ...rest, originalName: img.name, fileNameInZip: fileNameInZip };
+      const extension = img.mimeType ? `.${img.mimeType.split('/')[1]}` : '';
+      const fileNameInZip = `img_${img.id}_${sanitizedName}${extension}`;
+      return { ...rest, originalName: img.name, fileNameInZip: fileNameInZip, mimeType: img.mimeType };
     }),
   };
   
   const imageFiles = images
-    .filter(img => img.file instanceof Blob) // Ensure file is a Blob/File
+    .filter(img => img.file instanceof Blob) 
     .map(img => {
         const sanitizedName = (img.name || `image_${img.id}`).replace(/[^a-zA-Z0-9_.-]/g, '_');
-        const fileNameInZip = `img_${img.id}_${sanitizedName}`;
+        const extension = img.mimeType ? `.${img.mimeType.split('/')[1]}` : '';
+        const fileNameInZip = `img_${img.id}_${sanitizedName}${extension}`;
         return {
-            name: fileNameInZip, // Use the same sanitized name as in metadata
+            name: fileNameInZip, 
             blob: img.file as Blob 
         };
   });
 
-  console.log(`Exporting: Prepared metadata and ${imageFiles.length} image files blobs.`);
+  console.log(`[EXPORT DEBUG] Exporting: Prepared metadata and ${imageFiles.length} image files blobs.`);
   return { metadataJson: JSON.stringify(metadata, null, 2), imageFiles };
 };
 
 
 export const importData = async (metadataJson: string, files: File[]): Promise<string[]> => {
-  console.log("Importing: Starting importData function.");
+  console.log("[IMPORT DEBUG] Importing: Starting importData function.");
   const warnings: string[] = [];
   
   let parsedData;
   try {
     parsedData = JSON.parse(metadataJson);
-    console.log("Importing: Metadata JSON parsed. Version:", parsedData.version);
+    console.log("[IMPORT DEBUG] Importing: Metadata JSON parsed. Version:", parsedData.version);
   } catch (e) {
-    console.error("Importing: Failed to parse metadata JSON.", e);
+    console.error("[IMPORT DEBUG] Importing: Failed to parse metadata JSON.", e);
     warnings.push(`Failed to parse metadata JSON: ${(e as Error).message}`);
     return warnings;
   }
   
-  // Collections from JSON, ensuring createdAt is a Date
   const importedCollectionsRaw: Array<Collection & {id: number}> = 
     (parsedData.collections || []).map((c: any) => ({
     ...c,
     createdAt: new Date(c.createdAt),
   }));
-  console.log(`Importing: ${importedCollectionsRaw.length} collections found in metadata.`);
+  console.log(`[IMPORT DEBUG] Importing: ${importedCollectionsRaw.length} collections found in metadata.`);
 
-  // Images from JSON, ensuring createdAt is a Date
   const importedImagesJsonData = (parsedData.images || []).map((img: any) => ({
     ...img,
     createdAt: new Date(img.createdAt),
   }));
-  console.log(`Importing: ${importedImagesJsonData.length} images found in metadata.`);
+  console.log(`[IMPORT DEBUG] Importing: ${importedImagesJsonData.length} images found in metadata.`);
 
 
   const oldToNewCollectionIdMap = new Map<number, number>();
-  // Stores { newDbId: number (ID after insert), oldParentId: number | null (from JSON) }
   const collectionParentImportData: Array<{ newDbId: number; oldParentId: number | null }> = [];
   
-  // Map filenames from the zip to File objects for quick lookup
   const filesMap = new Map(files.map(f => [f.name, f]));
-  console.log(`Importing: ${filesMap.size} image files provided from ZIP.`);
+  console.log(`[IMPORT DEBUG] Importing: ${filesMap.size} image files provided from ZIP.`);
 
   await db.transaction('rw', db.collections, db.images, async () => {
-    console.log("Importing: Dexie transaction started for collections and images.");
+    console.log("[IMPORT DEBUG] Importing: Dexie transaction started for collections and images.");
 
-    // COLLECTIONS - Pass 1: Insert all collections, map old IDs to new IDs.
-    console.log("Importing: Collections Pass 1 - Inserting collections and mapping IDs.");
+    console.log("[IMPORT DEBUG] Importing: Collections Pass 1 - Inserting collections and mapping IDs.");
     for (const collToImport of importedCollectionsRaw) {
-      const oldCollectionId = collToImport.id; // Original ID from JSON file
+      const oldCollectionId = collToImport.id; 
       
-      // Explicitly pick fields for the new collection object
       const newCollectionEntry: Omit<Collection, 'id' | 'children' | 'imageCount'> = {
         name: collToImport.name,
-        createdAt: collToImport.createdAt, // Already a Date object from map above
-        parentId: null, // Set to null initially, will be updated in Pass 2
+        createdAt: collToImport.createdAt, 
+        parentId: null, // Will be updated in Pass 2
       };
 
       if (!(newCollectionEntry.createdAt instanceof Date) || isNaN(newCollectionEntry.createdAt.getTime())) {
         const warningMsg = `Collection "${newCollectionEntry.name}" has invalid createdAt value ("${collToImport.createdAt}"). Skipping.`;
         warnings.push(warningMsg);
-        console.warn(`Importing: ${warningMsg}`);
+        console.warn(`[IMPORT DEBUG] ${warningMsg}`);
         continue;
       }
 
       try {
-        const newGeneratedDbId = await db.collections.add(newCollectionEntry);
+        const newGeneratedDbId = await db.collections.add(newCollectionEntry as Collection);
         oldToNewCollectionIdMap.set(oldCollectionId, newGeneratedDbId);
         collectionParentImportData.push({ newDbId: newGeneratedDbId, oldParentId: collToImport.parentId ?? null });
-        // console.log(`Importing: Added collection "${newCollectionEntry.name}". Old ID: ${oldCollectionId}, New DB ID: ${newGeneratedDbId}`);
+        console.log(`[IMPORT DEBUG] Added collection "${newCollectionEntry.name}". Old ID: ${oldCollectionId}, New DB ID: ${newGeneratedDbId}`);
       } catch (e) {
         const errorMsg = `Failed to import collection "${newCollectionEntry.name}" (Old ID: ${oldCollectionId}): ${(e as Error).message}`;
         warnings.push(errorMsg);
-        console.error(`Importing: ${errorMsg}`, e);
+        console.error(`[IMPORT DEBUG] ${errorMsg}`, e);
       }
     }
-    console.log(`Importing: Collections Pass 1 completed. ${oldToNewCollectionIdMap.size} collections mapped.`);
+    console.log(`[IMPORT DEBUG] Collections Pass 1 completed. ${oldToNewCollectionIdMap.size} collections mapped.`);
 
-    // COLLECTIONS - Pass 2: Update parentIds using the new ID map.
-    console.log("Importing: Collections Pass 2 - Updating parent IDs.");
+    console.log("[IMPORT DEBUG] Importing: Collections Pass 2 - Updating parent IDs.");
     for (const { newDbId, oldParentId } of collectionParentImportData) {
       if (oldParentId !== null) { 
         const newParentDbId = oldToNewCollectionIdMap.get(oldParentId);
         if (newParentDbId !== undefined) {
           try {
             await db.collections.update(newDbId, { parentId: newParentDbId });
-            // console.log(`Importing: Set parent for collection (New DB ID: ${newDbId}) to New Parent DB ID: ${newParentDbId} (Original Parent ID: ${oldParentId})`);
+            console.log(`[IMPORT DEBUG] Set parent for collection (New DB ID: ${newDbId}) to New Parent DB ID: ${newParentDbId} (Original Parent ID: ${oldParentId})`);
           } catch (e) {
              const errorMsg = `Failed to set parent for collection (New DB ID: ${newDbId}, Original Parent ID: ${oldParentId}): ${(e as Error).message}`;
              warnings.push(errorMsg);
-             console.error(`Importing: ${errorMsg}`, e);
+             console.error(`[IMPORT DEBUG] ${errorMsg}`, e);
           }
         } else {
           const warningMsg = `Parent collection (Original ID: ${oldParentId}) for collection (New DB ID: ${newDbId}) not found during mapping. It will remain a root collection.`;
           warnings.push(warningMsg);
-          console.warn(`Importing: ${warningMsg}`);
+          console.warn(`[IMPORT DEBUG] ${warningMsg}`);
         }
       }
     }
-    console.log("Importing: Collections Pass 2 completed.");
+    console.log("[IMPORT DEBUG] Importing: Collections Pass 2 completed.");
     
-    // IMAGES - Import images and link to newly mapped collection IDs
-    console.log("Importing: Starting image import process.");
+    console.log("[IMPORT DEBUG] Importing: Starting image import process.");
     let imagesAddedCount = 0;
     for (const imgJson of importedImagesJsonData) {
-      const imageFile = filesMap.get(imgJson.fileNameInZip) || filesMap.get(imgJson.originalName);
+      console.log(`[IMPORT DEBUG] Processing image JSON: originalName="${imgJson.originalName}", fileNameInZip="${imgJson.fileNameInZip}"`);
+      const imageFile = filesMap.get(imgJson.fileNameInZip);
 
       if (imageFile) {
+        console.log(`[IMPORT DEBUG] Found file in ZIP for "${imgJson.fileNameInZip}": ${imageFile.name}, type: ${imageFile.type}`);
         const newImageCollectionIds = (imgJson.collectionIds || [])
           .map((oldCollId: number) => oldToNewCollectionIdMap.get(oldCollId))
           .filter((newCollId?: number): newCollId is number => newCollId !== undefined);
+        console.log(`[IMPORT DEBUG] Mapped collection IDs for "${imgJson.originalName}": Old ${JSON.stringify(imgJson.collectionIds)}, New ${JSON.stringify(newImageCollectionIds)}`);
 
-        // Explicitly construct the image object to be added
         const imageToAdd: Omit<ImageMetadata, 'id' | 'dataUri' | 'transform'> = {
           name: imgJson.originalName || imgJson.name || imageFile.name,
           file: imageFile,
@@ -311,8 +312,8 @@ export const importData = async (metadataJson: string, files: File[]): Promise<s
           height: imgJson.height,
           isFavorite: imgJson.isFavorite || false,
           isProtected: imgJson.isProtected || false,
-          createdAt: imgJson.createdAt, // Already a Date object
-          mimeType: imageFile.type, // Prefer actual file's mimeType from zip
+          createdAt: imgJson.createdAt, 
+          mimeType: imgJson.mimeType || imageFile.type, 
           syncStatus: imgJson.syncStatus || 'local',
           collectionIds: newImageCollectionIds,
         };
@@ -320,29 +321,29 @@ export const importData = async (metadataJson: string, files: File[]): Promise<s
         if (!(imageToAdd.createdAt instanceof Date) || isNaN(imageToAdd.createdAt.getTime())) {
           const warningMsg = `Image "${imageToAdd.name}" has invalid createdAt value ("${imgJson.createdAt}"). Skipping.`;
           warnings.push(warningMsg);
-          console.warn(`Importing: ${warningMsg}`);
+          console.warn(`[IMPORT DEBUG] ${warningMsg}`);
           continue;
         }
         
         try {
-          await db.images.add(imageToAdd as ImageMetadata); // Dexie will auto-generate 'id'
+          await db.images.add(imageToAdd as ImageMetadata); 
           imagesAddedCount++;
-          // console.log(`Importing: Added image "${imageToAdd.name}"`);
+          console.log(`[IMPORT DEBUG] Added image "${imageToAdd.name}" to DB.`);
         } catch (e) {
           const errorMsg = `Failed to import image "${imageToAdd.name}": ${(e as Error).message}`;
           warnings.push(errorMsg);
-          console.error(`Importing: ${errorMsg}`, e);
+          console.error(`[IMPORT DEBUG] ${errorMsg}`, e);
         }
       } else {
-        const warningMsg = `Image file not found in ZIP for metadata entry: "${imgJson.originalName || imgJson.fileNameInZip}". Skipping image.`;
+        const warningMsg = `Image file not found in ZIP for metadata entry: "${imgJson.originalName || imgJson.fileNameInZip}". Searched for "${imgJson.fileNameInZip}". Skipping image.`;
         warnings.push(warningMsg);
-        console.warn(`Importing: ${warningMsg}`);
+        console.warn(`[IMPORT DEBUG] ${warningMsg}`);
       }
     }
-    console.log(`Importing: Image import process completed. ${imagesAddedCount} images added to DB.`);
-  }); // End of Dexie transaction
+    console.log(`[IMPORT DEBUG] Image import process completed. ${imagesAddedCount} images added to DB.`);
+  }); 
   
-  console.log("Importing: importData function finished. Warnings collected:", warnings.length);
+  console.log("[IMPORT DEBUG] Importing: importData function finished. Warnings collected:", warnings.length);
   return warnings;
 };
 
