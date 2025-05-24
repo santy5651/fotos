@@ -14,13 +14,11 @@ export default function SearchBar({ onSearch }: SearchBarProps) {
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
-    // Call onSearch whenever searchTerm changes (debouncing can be added here if needed)
     onSearch(searchTerm);
   }, [searchTerm, onSearch]);
 
   const handleClear = () => {
     setSearchTerm('');
-    // onSearch(''); // Already handled by useEffect
   };
 
   return (
@@ -29,7 +27,7 @@ export default function SearchBar({ onSearch }: SearchBarProps) {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
           type="text"
-          placeholder="Buscar por nombre de colección..."
+          placeholder="Buscar por nombre o etiqueta..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="pl-10"
@@ -46,7 +44,6 @@ export default function SearchBar({ onSearch }: SearchBarProps) {
           </Button>
         )}
       </div>
-      {/* Search button removed */}
     </div>
   );
 }
