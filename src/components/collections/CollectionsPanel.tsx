@@ -1,13 +1,13 @@
 
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, getHierarchicalCollections, getImagesPerCollection, addCollection as dbAddCollection } from '@/lib/db';
+import { db, getHierarchicalCollections, addCollection as dbAddCollection, getCollections } from '@/lib/db';
 import type { Collection } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, Folder, ChevronDown, ChevronRight, Edit2, Trash2, Loader2 } from 'lucide-react';
+import { Plus, Folder, ChevronDown, ChevronRight, Edit2, Trash2, Loader2, FolderPlus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import {
   Dialog,
@@ -31,7 +31,9 @@ import {
   AlertDialogTrigger
 } from '@/components/ui/alert-dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { SidebarMenu, SidebarMenuItem as AliasedSidebarMenuItem, SidebarMenuButton, SidebarGroup, SidebarGroupLabel, SidebarMenuSub, SidebarMenuSubButton } from '@/components/ui/sidebar';
+import { SidebarMenu, SidebarMenuItem as AliasedSidebarMenuItem, SidebarMenuButton, SidebarGroup, SidebarGroupLabel, SidebarMenuSub } from '@/components/ui/sidebar';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 
 
 interface CollectionsPanelProps {
@@ -45,9 +47,10 @@ interface CollectionItemProps {
   onUpdate: () => void; // to refresh list
   imageCounts: Map<number, number>;
   selectedCollectionId: number | null;
+  onOpenCreateSubCollectionDialog: (parentId: number) => void;
 }
 
-function CollectionItemView({ collection, level, onSelect, onUpdate, imageCounts, selectedCollectionId }: CollectionItemProps) {
+function CollectionItemView({ collection, level, onSelect, onUpdate, imageCounts, selectedCollectionId, onOpenCreateSubCollectionDialog }: CollectionItemProps) {
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(true);
   const [isRenaming, setIsRenaming] = useState(false);
@@ -72,7 +75,7 @@ function CollectionItemView({ collection, level, onSelect, onUpdate, imageCounts
 
   const handleDelete = async () => {
     try {
-      await db.collections.delete(collection.id!);
+      await db.collections.delete(collection.id!); // Assumes db.collections.delete handles cascading or checks
       toast({ title: "Collection Deleted", description: `"${collection.name}" has been deleted.` });
       onUpdate();
     } catch (error) {
@@ -94,11 +97,14 @@ function CollectionItemView({ collection, level, onSelect, onUpdate, imageCounts
               {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
             </button>
           )}
-          {!collection.children || collection.children.length === 0 && <Folder size={16} className="mr-2" />}
+          {!collection.children || collection.children.length === 0 && <Folder size={16} className="mr-2 flex-shrink-0" />}
           <span className="truncate flex-1">{collection.name}</span>
           <span className="text-xs text-muted-foreground ml-auto mr-2">{count}</span>
         </SidebarMenuButton>
-        <div className="opacity-0 group-hover:opacity-100 transition-opacity pr-2 flex">
+        <div className="opacity-0 group-hover:opacity-100 transition-opacity pr-1 flex items-center">
+           <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => {e.stopPropagation(); onOpenCreateSubCollectionDialog(collection.id!)}}>
+            <FolderPlus size={14} />
+           </Button>
            <Dialog open={isRenaming} onOpenChange={setIsRenaming}>
             <DialogTrigger asChild>
               <Button variant="ghost" size="icon" className="h-6 w-6"><Edit2 size={14} /></Button>
@@ -128,7 +134,8 @@ function CollectionItemView({ collection, level, onSelect, onUpdate, imageCounts
         </div>
       </div>
       {isOpen && collection.children && collection.children.length > 0 && (
-        <SidebarMenuSub>
+        // Removed SidebarMenuSub from here as per original styling. Nesting is handled by padding.
+        <>
           {collection.children.map(child => (
             <CollectionItemView
               key={child.id}
@@ -138,9 +145,10 @@ function CollectionItemView({ collection, level, onSelect, onUpdate, imageCounts
               onUpdate={onUpdate}
               imageCounts={imageCounts}
               selectedCollectionId={selectedCollectionId}
+              onOpenCreateSubCollectionDialog={onOpenCreateSubCollectionDialog}
             />
           ))}
-        </SidebarMenuSub>
+        </>
       )}
     </AliasedSidebarMenuItem>
   );
@@ -150,40 +158,26 @@ function CollectionItemView({ collection, level, onSelect, onUpdate, imageCounts
 export default function CollectionsPanel({ onCollectionSelect }: CollectionsPanelProps) {
   const { toast } = useToast();
   const [newCollectionName, setNewCollectionName] = useState('');
-  const [parentCollectionId, setParentCollectionId] = useState<number | null>(null);
+  const [dialogParentId, setDialogParentId] = useState<number | null>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0); // Used to trigger re-fetch
+  const [refreshKey, setRefreshKey] = useState(0);
   const [selectedCollectionId, setSelectedCollectionId] = useState<number | null>(null);
 
-  const collections = useLiveQuery(
-    async () => {
-      return getHierarchicalCollections();
-    }, [refreshKey], [] as Collection[]
+  const hierarchicalCollections = useLiveQuery(
+    async () => getHierarchicalCollections(),
+    [refreshKey], [] as Collection[]
+  );
+
+  const flatCollectionsForSelect = useLiveQuery(
+    async () => getCollections(), // Fetches a flat list of all collections
+    [refreshKey], [] as Collection[]
   );
 
   const imageCountsResult = useLiveQuery(
     async () => {
-      const allCollectionsFlat = collections?.reduce((acc, curr) => {
-        acc.push(curr);
-        if (curr.children) {
-          // Simple recursive helper for flattening, adjust depth as needed
-          const flattenChildren = (items: Collection[]): Collection[] => {
-            return items.reduce((cAcc, cItem) => {
-              cAcc.push(cItem);
-              if (cItem.children) {
-                cAcc.push(...flattenChildren(cItem.children));
-              }
-              return cAcc;
-            }, [] as Collection[]);
-          };
-          acc.push(...flattenChildren(curr.children));
-        }
-        return acc;
-      }, [] as Collection[]);
-
       const countsMap = new Map<number, number>();
-      if(allCollectionsFlat) {
-        for(const coll of allCollectionsFlat) {
+      if(flatCollectionsForSelect) {
+        for(const coll of flatCollectionsForSelect) {
           if(coll.id) {
              const count = await db.images.where('collectionIds').equals(coll.id).count();
              countsMap.set(coll.id, count);
@@ -191,18 +185,25 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
         }
       }
       return countsMap;
-
-    }, [collections, refreshKey], new Map<number,number>()
+    }, [flatCollectionsForSelect, refreshKey], new Map<number,number>()
   );
 
+  const openCreateCollectionDialog = (parentId: number | null) => {
+    setDialogParentId(parentId);
+    setNewCollectionName(''); // Reset name for new entry
+    setIsCreateDialogOpen(true);
+  };
 
   const handleAddCollection = async () => {
-    if (newCollectionName.trim() === '') return;
+    if (newCollectionName.trim() === '') {
+        toast({ variant: "destructive", title: "Error", description: "Collection name cannot be empty." });
+        return;
+    }
     try {
-      await dbAddCollection({ name: newCollectionName, parentId: parentCollectionId });
+      await dbAddCollection({ name: newCollectionName, parentId: dialogParentId });
       toast({ title: "Collection Created", description: `"${newCollectionName}" has been added.` });
       setNewCollectionName('');
-      setParentCollectionId(null);
+      setDialogParentId(null);
       setIsCreateDialogOpen(false);
       setRefreshKey(prev => prev + 1);
     } catch (error) {
@@ -215,7 +216,7 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
     onCollectionSelect(collectionId);
   }
   
-  if (!collections || !imageCountsResult) {
+  if (!hierarchicalCollections || !imageCountsResult || !flatCollectionsForSelect) {
     return <div className="p-4"><Loader2 className="animate-spin" /> Loading collections...</div>;
   }
 
@@ -225,21 +226,46 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
         <span>Collections</span>
          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
           <DialogTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setParentCollectionId(null)}>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openCreateCollectionDialog(null)}>
               <Plus size={16} />
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Create New Collection</DialogTitle>
-              <DialogDescription>Enter a name for your new collection.</DialogDescription>
+              <DialogDescription>Enter a name and optionally select a parent for your new collection.</DialogDescription>
             </DialogHeader>
-            <Input
-              placeholder="Collection name"
-              value={newCollectionName}
-              onChange={(e) => setNewCollectionName(e.target.value)}
-            />
-            {/* TODO: Add dropdown to select parent collection */}
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="collection-name" className="text-right">Name</Label>
+                <Input
+                  id="collection-name"
+                  placeholder="Collection name"
+                  value={newCollectionName}
+                  onChange={(e) => setNewCollectionName(e.target.value)}
+                  className="col-span-3"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="parent-collection" className="text-right">Parent</Label>
+                <Select
+                  value={dialogParentId?.toString() ?? "none"}
+                  onValueChange={(value) => setDialogParentId(value === "none" ? null : Number(value))}
+                >
+                  <SelectTrigger id="parent-collection" className="col-span-3">
+                    <SelectValue placeholder="Select parent (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">(No Parent - Root Collection)</SelectItem>
+                    {flatCollectionsForSelect.map((collection) => (
+                      <SelectItem key={collection.id} value={collection.id!.toString()}>
+                        {collection.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
             <DialogFooter>
               <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
               <Button onClick={handleAddCollection}>Create</Button>
@@ -253,7 +279,7 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
             All Images
           </SidebarMenuButton>
         </AliasedSidebarMenuItem>
-        {collections.map((collection) => (
+        {hierarchicalCollections.map((collection) => (
           <CollectionItemView
             key={collection.id}
             collection={collection}
@@ -262,11 +288,10 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
             onUpdate={() => setRefreshKey(prev => prev + 1)}
             imageCounts={imageCountsResult}
             selectedCollectionId={selectedCollectionId}
+            onOpenCreateSubCollectionDialog={openCreateCollectionDialog}
           />
         ))}
       </SidebarMenu>
     </SidebarGroup>
   );
 }
-
-    
