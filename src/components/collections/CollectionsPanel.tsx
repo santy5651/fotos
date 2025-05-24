@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, getHierarchicalCollections, addCollection as dbAddCollection, getCollections } from '@/lib/db';
 import type { Collection } from '@/types';
@@ -105,7 +105,7 @@ function CollectionItemView({
   const displayName = (level > 0 ? '-'.repeat(level) + ' ' : '') + collection.name;
 
   return (
-    <>
+    <React.Fragment>
       <AliasedSidebarMenuItem>
         <div className="flex items-center group w-full">
           {collection.children && collection.children.length > 0 ? (
@@ -126,7 +126,6 @@ function CollectionItemView({
             onClick={() => onSelect(collection.id!)}
             isActive={selectedCollectionId === collection.id}
             className="flex-grow h-auto py-1 px-1.5 text-left"
-            style={{ paddingLeft: `${0.25 + level * 0}rem` }} 
           >
             <Folder size={16} className="mr-1 flex-shrink-0" />
             <span className="truncate flex-1" title={collection.name}>{displayName}</span>
@@ -172,25 +171,7 @@ function CollectionItemView({
           </div>
         </div>
       </AliasedSidebarMenuItem>
-      {isOpen && collection.children && collection.children.length > 0 && (
-        <>
-          {collection.children.map(child => (
-            <CollectionItemView
-              key={child.id}
-              collection={child}
-              level={level + 1}
-              onSelect={onSelect}
-              onUpdate={onUpdate}
-              imageCounts={imageCounts}
-              selectedCollectionId={selectedCollectionId}
-              onOpenCreateSubCollectionDialog={onOpenCreateSubCollectionDialog}
-              isOpen={isOpen} // This needs to be the specific isOpen for the child
-              onToggleOpen={onToggleOpen} // This needs to be the specific toggle for the child
-            />
-          ))}
-        </>
-      )}
-    </>
+    </React.Fragment>
   );
 }
 
@@ -409,12 +390,13 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
                         {(function renderSelectOptions(collections: Collection[], level = 0) {
                             let options: JSX.Element[] = [];
                             collections.forEach(collection => {
+                                const prefix = level > 0 ? '-'.repeat(level) + ' ' : '';
                                 options.push(
                                     <SelectItem 
                                         key={collection.id} 
                                         value={collection.id!.toString()} 
                                     >
-                                        {level > 0 ? '-'.repeat(level) + ' ' : ''}{collection.name}
+                                        {prefix}{collection.name}
                                     </SelectItem>
                                 );
                                 if (collection.children && collection.children.length > 0) {
@@ -448,3 +430,5 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
 }
 
     
+
+      
