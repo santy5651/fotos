@@ -252,20 +252,15 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
           </div>
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="h-7 w-7 text-muted-foreground hover:text-destructive" 
-                    disabled={image.isProtected}
-                    aria-label="Delete image"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent><p>Delete Image</p></TooltipContent>
-              </Tooltip>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="h-7 w-7 text-muted-foreground hover:text-destructive" 
+                disabled={image.isProtected}
+                aria-label="Delete image"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
