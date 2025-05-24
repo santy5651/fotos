@@ -193,10 +193,22 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
         <CardHeader className="pt-4 pb-2 px-4">
           <CardTitle className="text-sm font-medium truncate" title={image.name}>{image.name}</CardTitle>
           {image.tags && image.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-1">
-              {image.tags.slice(0,2).map(tag => <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>)}
-              {image.tags.length > 2 && <Badge variant="outline" className="text-xs">+{image.tags.length - 2}</Badge>}
-            </div>
+            <>
+              <div className="flex flex-wrap gap-1 mt-1">
+                {image.tags.slice(0, 2).map(tag => (
+                  <Badge key={tag} variant="secondary" className="text-xs">
+                    {tag}
+                  </Badge>
+                ))}
+              </div>
+              {image.tags.length > 2 && (
+                <div className="mt-1">
+                  <Badge variant="outline" className="text-xs">
+                    +{image.tags.length - 2}
+                  </Badge>
+                </div>
+              )}
+            </>
           )}
           {image.collectionIds && image.collectionIds.length > 0 && (
             <>
@@ -274,4 +286,3 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
     </>
   );
 }
-
