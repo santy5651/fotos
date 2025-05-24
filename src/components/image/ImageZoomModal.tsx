@@ -19,7 +19,7 @@ export default function ImageZoomModal({ isOpen, onClose, imageUrl, imageName, r
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[90vw] md:max-w-[80vw] lg:max-w-[70vw] xl:max-w-[60vw] p-0 aspect-video flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm border-none shadow-2xl">
+      <DialogContent className="w-[90vw] h-[90vh] p-0 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm border-none shadow-2xl">
         {/* DialogHeader and DialogTitle for accessibility */}
         <DialogHeader className="sr-only"> {/* Visually hidden but accessible */}
           <DialogTitle>{imageName}</DialogTitle>
@@ -51,3 +51,4 @@ export default function ImageZoomModal({ isOpen, onClose, imageUrl, imageName, r
     </Dialog>
   );
 }
+
