@@ -107,13 +107,18 @@ export const getHierarchicalCollections = async (): Promise<Collection[]> => {
   const rootCollections: Collection[] = [];
 
   allCollections.forEach(collection => {
-    collection.children = [];
+    collection.children = []; // Initialize children array
     collectionsMap.set(collection.id!, collection);
   });
 
   allCollections.forEach(collection => {
     if (collection.parentId && collectionsMap.has(collection.parentId)) {
-      collectionsMap.get(collection.parentId)!.children!.push(collection);
+      const parentCollection = collectionsMap.get(collection.parentId)!;
+      // Ensure children array is initialized on parent
+      if (!parentCollection.children) {
+        parentCollection.children = [];
+      }
+      parentCollection.children.push(collection);
     } else {
       rootCollections.push(collection);
     }
@@ -131,25 +136,22 @@ export const updateCollection = async (id: number, changes: Partial<Collection>)
 };
 
 export const deleteCollection = async (id: number): Promise<void> => {
-  // Check if collection contains images
-  const imagesInCollection = await db.images.where('collectionIds').equals(id).count();
-  if (imagesInCollection > 0) {
-    // Instead of throwing error, disassociate images from this collection
-     const imagesToUpdate = await db.images.where('collectionIds').equals(id).toArray();
-     for (const img of imagesToUpdate) {
-        await db.images.update(img.id!, { collectionIds: img.collectionIds.filter(cid => cid !== id) });
-     }
-    // throw new Error("Collection is not empty. Remove images before deleting.");
+  // Disassociate images from this collection
+  const imagesToUpdate = await db.images.where('collectionIds').equals(id).toArray();
+  for (const img of imagesToUpdate) {
+    if (img.id !== undefined) {
+      await db.images.update(img.id, { collectionIds: img.collectionIds.filter(cid => cid !== id) });
+    }
   }
-  // Check for sub-collections
+
+  // Re-parent sub-collections to null (make them root)
   const subCollections = await db.collections.where('parentId').equals(id).toArray();
   if (subCollections.length > 0) {
-    // Optionally, re-parent sub-collections to null or delete them recursively.
-    // For now, we'll just disassociate them (set parentId to null)
     for (const subColl of subCollections) {
-        await db.collections.update(subColl.id!, { parentId: null });
+      if (subColl.id !== undefined) {
+        await db.collections.update(subColl.id, { parentId: null });
+      }
     }
-    // throw new Error("Collection has sub-collections. Delete them first or implement cascade delete.");
   }
   return db.collections.delete(id);
 };
@@ -177,20 +179,19 @@ export const exportData = async (): Promise<{ metadataJson: string, imageFiles: 
   const collections = await db.collections.toArray();
 
   const metadata = {
-    version: 1,
-    collections,
+    version: 1, // Schema version for the export format
+    collections: collections.map(c => ({...c, children: undefined, imageCount: undefined})), // Strip transient properties
     images: images.map(img => {
-      // Dexie's toArray() might not include the File object if it's large and not explicitly requested.
-      // Ensure 'file' is actually the Blob/File content. For export, we need the actual file.
-      // If img.file is just a reference, this won't work. Assume db.images stores the File object.
       const { file, ...rest } = img; 
       return { ...rest, originalName: img.name, fileNameInZip: `img_${img.id}_${img.name}` };
     }),
   };
   
-  const imageFiles = images.map(img => ({
-    name: `img_${img.id}_${img.name}`, // This name will be used inside the zip and for matching during import
-    blob: img.file // This must be the actual File/Blob object
+  const imageFiles = images
+    .filter(img => img.file instanceof Blob) // Ensure img.file is a Blob/File
+    .map(img => ({
+      name: `img_${img.id}_${img.name}`,
+      blob: img.file as Blob // Cast as Blob after filtering
   }));
 
   return { metadataJson: JSON.stringify(metadata, null, 2), imageFiles };
@@ -201,70 +202,66 @@ export const importData = async (metadataJson: string, files: File[]): Promise<s
   const warnings: string[] = [];
   const parsedData = JSON.parse(metadataJson);
   
-  // Ensure createdAt fields are Date objects
-  const importedCollections: Collection[] = (parsedData.collections || []).map((c: any) => ({
+  const importedCollectionsRaw: Array<Collection & {id: number}> = // Assume id is present from export
+    (parsedData.collections || []).map((c: any) => ({
     ...c,
     createdAt: new Date(c.createdAt),
   }));
-  const importedImagesMetadata: (Omit<ImageMetadata, 'file'> & {originalName?: string, fileNameInZip?: string})[] = 
+
+  const importedImagesMetadata: (Omit<ImageMetadata, 'file' | 'id'> & { id?: number, originalName?: string, fileNameInZip?: string, collectionIds: number[] })[] = 
     (parsedData.images || []).map((img: any) => ({
-    ...img,
+    ...img, // Includes original ID as 'id'
     createdAt: new Date(img.createdAt),
   }));
 
   const oldToNewCollectionIdMap = new Map<number, number>();
+  const collectionParentImportData: Array<{ newId: number; oldParentId: number | null }> = [];
   const filesMap = new Map(files.map(f => [f.name, f]));
 
   await db.transaction('rw', db.collections, db.images, async () => {
-    // Import Collections first and map old IDs to new IDs
-    for (const coll of importedCollections) {
-      const oldId = coll.id;
-      const { id, children, imageCount, ...collectionDataToImport } = coll;
-      try {
-        // parentId might also need mapping if it refers to an ID within the imported set.
-        // For simplicity, if parentId exists, we assume it's an old ID and try to map it.
-        if (collectionDataToImport.parentId !== null && collectionDataToImport.parentId !== undefined) {
-            const newParentId = oldToNewCollectionIdMap.get(collectionDataToImport.parentId);
-            // If newParentId is undefined, it means parent was not imported or not yet processed.
-            // This simple mapping assumes parent collections are listed before children or handled by iterating.
-            // A more robust solution would process all collections first, then update parentIds.
-            // For now, we'll map if available, otherwise, it might become a root collection or fail if parentId is mandatory.
-            collectionDataToImport.parentId = newParentId !== undefined ? newParentId : null;
-        }
+    // COLLECTIONS - Pass 1: Insert all collections, map old IDs to new IDs.
+    for (const collToImport of importedCollectionsRaw) {
+      const oldCollectionId = collToImport.id; // Original ID from JSON
+      const { id, children, imageCount, parentId: originalParentId, ...collectionData } = collToImport;
 
-        const newCollectionId = await db.collections.add(collectionDataToImport as Collection);
-        if (oldId !== undefined) {
-          oldToNewCollectionIdMap.set(oldId, newCollectionId);
-        }
+      try {
+        // Add collection with parentId temporarily as null. It will be updated in Pass 2.
+        const newGeneratedId = await db.collections.add({
+          ...collectionData, // name, createdAt
+          parentId: null, // Set to null initially
+        } as Collection);
+        
+        oldToNewCollectionIdMap.set(oldCollectionId, newGeneratedId);
+        collectionParentImportData.push({ newId: newGeneratedId, oldParentId: originalParentId ?? null });
       } catch (e) {
-        warnings.push(`Failed to import collection "${coll.name}": ${(e as Error).message}`);
+        warnings.push(`Failed to import collection "${collectionData.name}" (Pass 1): ${(e as Error).message}`);
+      }
+    }
+
+    // COLLECTIONS - Pass 2: Update parentIds using the new ID map.
+    for (const { newId: newCollectionId, oldParentId } of collectionParentImportData) {
+      if (oldParentId !== null) { // If it had a parent
+        const newParentCollectionId = oldToNewCollectionIdMap.get(oldParentId);
+        if (newParentCollectionId !== undefined) {
+          try {
+            await db.collections.update(newCollectionId, { parentId: newParentCollectionId });
+          } catch (e) {
+            warnings.push(`Failed to set parent for collection (New ID: ${newCollectionId}, Original Parent ID: ${oldParentId}): ${(e as Error).message}`);
+          }
+        } else {
+          warnings.push(`Parent collection (Original ID: ${oldParentId}) for collection (New ID: ${newCollectionId}) not found during mapping. It will remain a root collection.`);
+        }
       }
     }
     
-    // Second pass for parentIds to ensure all collections are in the map
-    for (const coll of importedCollections) {
-        if (coll.parentId !== null && coll.parentId !== undefined) {
-            const newGeneratedId = oldToNewCollectionIdMap.get(coll.id!); // ID of current collection after import
-            const newParentId = oldToNewCollectionIdMap.get(coll.parentId);
-            if (newGeneratedId && newParentId && (await db.collections.get(newGeneratedId))?.parentId !== newParentId) {
-                 try {
-                    await db.collections.update(newGeneratedId, { parentId: newParentId });
-                 } catch (e) {
-                    warnings.push(`Failed to update parent for collection "${coll.name}": ${(e as Error).message}`);
-                 }
-            }
-        }
-    }
-
-
-    // Import Images
+    // IMAGES - Import images and link to newly mapped collection IDs
     for (const imgMeta of importedImagesMetadata) {
-      const { id: oldImgId, file, fileNameInZip, originalName, collectionIds: oldCollectionIds, ...restMeta } = imgMeta;
+      const { id: oldImgId, file, fileNameInZip, originalName, collectionIds: oldCollectionIdsFromImg, ...restMeta } = imgMeta;
       
       const imageFile = filesMap.get(fileNameInZip!) || filesMap.get(originalName!);
 
       if (imageFile) {
-        const newCollectionIds = (oldCollectionIds || [])
+        const newImageCollectionIds = (oldCollectionIdsFromImg || [])
           .map(oldCollId => oldToNewCollectionIdMap.get(oldCollId))
           .filter(newCollId => newCollId !== undefined) as number[];
 
@@ -273,7 +270,7 @@ export const importData = async (metadataJson: string, files: File[]): Promise<s
           name: originalName || imageFile.name,
           file: imageFile,
           mimeType: imageFile.type,
-          collectionIds: newCollectionIds,
+          collectionIds: newImageCollectionIds,
           createdAt: new Date(restMeta.createdAt), // Already a Date object from above
           syncStatus: 'local',
           // id will be auto-generated
