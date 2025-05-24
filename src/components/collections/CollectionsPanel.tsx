@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -30,7 +31,7 @@ import {
   AlertDialogTrigger
 } from '@/components/ui/alert-dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarGroup, SidebarGroupLabel, SidebarMenuSub, SidebarMenuSubButton } from '@/components/ui/sidebar';
+import { SidebarMenu, SidebarMenuItem as AliasedSidebarMenuItem, SidebarMenuButton, SidebarGroup, SidebarGroupLabel, SidebarMenuSub, SidebarMenuSubButton } from '@/components/ui/sidebar';
 
 
 interface CollectionsPanelProps {
@@ -80,7 +81,7 @@ function CollectionItemView({ collection, level, onSelect, onUpdate, imageCounts
   };
 
   return (
-    <SidebarMenuItem>
+    <AliasedSidebarMenuItem>
       <div className="flex items-center group">
         <SidebarMenuButton
           onClick={() => onSelect(collection.id!)}
@@ -116,7 +117,7 @@ function CollectionItemView({ collection, level, onSelect, onUpdate, imageCounts
               <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive"><Trash2 size={14} /></Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
-              <AlertDialogHeader><DialogTitle>Delete Collection?</AlertDialogTitle></AlertDialogHeader>
+              <AlertDialogHeader><DialogTitle>Delete Collection?</DialogTitle></AlertDialogHeader>
               <AlertDialogDescription>Are you sure you want to delete "{collection.name}"? This cannot be undone.</AlertDialogDescription>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
@@ -141,7 +142,7 @@ function CollectionItemView({ collection, level, onSelect, onUpdate, imageCounts
           ))}
         </SidebarMenuSub>
       )}
-    </SidebarMenuItem>
+    </AliasedSidebarMenuItem>
   );
 }
 
@@ -162,22 +163,21 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
 
   const imageCountsResult = useLiveQuery(
     async () => {
-      const countsPerCollection = await getImagesPerCollection();
-      const map = new Map<number, number>();
-      countsPerCollection.forEach(item => {
-        const collection = collections?.find(c => c.name === item.name); // This matching logic needs improvement if names aren't unique
-                                                                         // or if getImagesPerCollection can return IDs
-        const coll = collections?.flatMap(c => [c, ...(c.children || [])]).find(c => c.name === item.name); // A bit hacky
-        if (coll?.id) map.set(coll.id, item.count);
-      });
-      
-      // A better way for imageCounts: iterate collections and query db.images.where('collectionIds').equals(collection.id).count()
-      // This is less efficient if many collections, but more accurate.
-      // For now, let's assume getImagesPerCollection gives enough info or use the hacky name matching.
-      // A proper solution is to modify getImagesPerCollection to return IDs or use a more direct approach.
       const allCollectionsFlat = collections?.reduce((acc, curr) => {
         acc.push(curr);
-        if (curr.children) acc.push(...curr.children.reduce((cAcc, cCurr) => { cAcc.push(cCurr); return cAcc; }, [] as Collection[])); // Basic flattening, might need recursion for deeper levels
+        if (curr.children) {
+          // Simple recursive helper for flattening, adjust depth as needed
+          const flattenChildren = (items: Collection[]): Collection[] => {
+            return items.reduce((cAcc, cItem) => {
+              cAcc.push(cItem);
+              if (cItem.children) {
+                cAcc.push(...flattenChildren(cItem.children));
+              }
+              return cAcc;
+            }, [] as Collection[]);
+          };
+          acc.push(...flattenChildren(curr.children));
+        }
         return acc;
       }, [] as Collection[]);
 
@@ -248,11 +248,11 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
         </Dialog>
       </SidebarGroupLabel>
       <SidebarMenu>
-        <SidebarMenuItem>
+        <AliasedSidebarMenuItem>
           <SidebarMenuButton onClick={() => handleSelectCollection(null)} isActive={selectedCollectionId === null}>
             All Images
           </SidebarMenuButton>
-        </SidebarMenuItem>
+        </AliasedSidebarMenuItem>
         {collections.map((collection) => (
           <CollectionItemView
             key={collection.id}
@@ -269,3 +269,4 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
   );
 }
 
+    
