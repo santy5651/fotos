@@ -135,7 +135,7 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
             </div>
             
             {/* Action Icons Overlay */}
-            <div className="absolute bottom-0 left-0 right-0 px-1 py-1 bg-gradient-to-t from-black/70 via-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-in-out flex justify-between items-center">
+            <div className="absolute bottom-0 left-0 right-0 px-1 py-1 bg-gradient-to-t from-black/70 via-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-in-out flex justify-start items-center">
               <div className="flex gap-0.5 flex-wrap"> {/* Added flex-wrap here */}
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -186,30 +186,6 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
                     <TooltipContent><p>Zoom</p></TooltipContent>
                   </Tooltip>
               </div>
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-[28px] w-[28px] p-1 text-red-400 hover:text-red-300 hover:bg-red-500/10" disabled={image.isProtected}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent><p>Delete</p></TooltipContent>
-                  </Tooltip>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This action cannot be undone. This will permanently delete "{image.name}".
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
             </div>
           </div>
         </CardContent>
@@ -298,3 +274,4 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
     </>
   );
 }
+
