@@ -223,7 +223,7 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
                     <Badge 
                       key={collection.id} 
                       variant="outline"
-                      className="text-xs font-normal border-primary/40 text-primary/90 hover:bg-primary/10"
+                      className="text-xs font-semibold border-primary/40 text-foreground hover:bg-primary/10"
                     >
                       {collection.name}
                     </Badge>
