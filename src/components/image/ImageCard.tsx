@@ -135,11 +135,11 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
             </div>
             
             {/* Action Icons Overlay */}
-            <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/70 via-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-in-out flex justify-between items-center">
-              <div className="flex gap-0.5">
+            <div className="absolute bottom-0 left-0 right-0 px-1 py-1 bg-gradient-to-t from-black/70 via-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-in-out flex justify-between items-center">
+              <div className="flex gap-0.5 flex-wrap"> {/* Added flex-wrap here */}
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" onClick={handleFavoriteToggle} className="h-8 w-8 hover:bg-white/10">
+                    <Button variant="ghost" size="icon" onClick={handleFavoriteToggle} className="h-[28px] w-[28px] p-1 hover:bg-white/10">
                       <Heart className={cn('h-4 w-4', image.isFavorite ? 'fill-red-500 text-red-500' : 'text-neutral-200 hover:text-white')} />
                     </Button>
                   </TooltipTrigger>
@@ -147,7 +147,7 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" onClick={handleProtectToggle} className="h-8 w-8 hover:bg-white/10">
+                    <Button variant="ghost" size="icon" onClick={handleProtectToggle} className="h-[28px] w-[28px] p-1 hover:bg-white/10">
                       <Shield className={cn('h-4 w-4', image.isProtected ? 'fill-blue-500 text-blue-500' : 'text-neutral-200 hover:text-white')} />
                     </Button>
                   </TooltipTrigger>
@@ -155,7 +155,7 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
                 </Tooltip>
                 <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon" onClick={() => setIsAddToCollectionDialogOpen(true)} className="h-8 w-8 hover:bg-white/10">
+                      <Button variant="ghost" size="icon" onClick={() => setIsAddToCollectionDialogOpen(true)} className="h-[28px] w-[28px] p-1 hover:bg-white/10">
                         <Tag className="h-4 w-4 text-neutral-200 hover:text-white" />
                       </Button>
                     </TooltipTrigger>
@@ -163,7 +163,7 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
                 </Tooltip>
                  <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon" onClick={() => handleRotate('ccw')} className="h-8 w-8 hover:bg-white/10">
+                      <Button variant="ghost" size="icon" onClick={() => handleRotate('ccw')} className="h-[28px] w-[28px] p-1 hover:bg-white/10">
                         <RotateCcw className="h-4 w-4 text-neutral-200 hover:text-white" />
                       </Button>
                     </TooltipTrigger>
@@ -171,7 +171,7 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
                   </Tooltip>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                       <Button variant="ghost" size="icon" onClick={() => handleRotate('cw')} className="h-8 w-8 hover:bg-white/10">
+                       <Button variant="ghost" size="icon" onClick={() => handleRotate('cw')} className="h-[28px] w-[28px] p-1 hover:bg-white/10">
                         <RotateCw className="h-4 w-4 text-neutral-200 hover:text-white" />
                       </Button>
                     </TooltipTrigger>
@@ -179,7 +179,7 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
                   </Tooltip>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon" onClick={() => setIsZoomModalOpen(true)} className="h-8 w-8 hover:bg-white/10">
+                      <Button variant="ghost" size="icon" onClick={() => setIsZoomModalOpen(true)} className="h-[28px] w-[28px] p-1 hover:bg-white/10">
                         <ZoomIn className="h-4 w-4 text-neutral-200 hover:text-white" />
                       </Button>
                     </TooltipTrigger>
@@ -190,7 +190,7 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
                 <AlertDialogTrigger asChild>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-red-400 hover:text-red-300 hover:bg-red-500/10" disabled={image.isProtected}>
+                      <Button variant="ghost" size="icon" className="h-[28px] w-[28px] p-1 text-red-400 hover:text-red-300 hover:bg-red-500/10" disabled={image.isProtected}>
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </TooltipTrigger>
@@ -250,12 +250,13 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
           <div className="text-xs text-muted-foreground truncate">
             {new Date(image.createdAt).toLocaleDateString()} - {image.width}x{image.height}
           </div>
-          <AlertDialog>
+           {/* AlertDialogTrigger directly wraps Button, Tooltip removed from this specific delete instance */}
+           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-7 w-7 text-muted-foreground hover:text-destructive" 
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-muted-foreground hover:text-destructive"
                 disabled={image.isProtected}
                 aria-label="Delete image"
               >
