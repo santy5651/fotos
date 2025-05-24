@@ -63,6 +63,10 @@ function CollectionItemView({ collection, level, onSelect, onUpdate, imageCounts
       setIsRenaming(false);
       return;
     }
+    if (newName.length > 50) {
+        toast({ variant: "destructive", title: "Error", description: "Collection name cannot exceed 50 characters." });
+        return;
+    }
     try {
       await db.collections.update(collection.id!, { name: newName });
       toast({ title: "Collection Renamed", description: `"${collection.name}" is now "${newName}".` });
@@ -94,30 +98,29 @@ function CollectionItemView({ collection, level, onSelect, onUpdate, imageCounts
       <AliasedSidebarMenuItem>
         <div
           className="flex items-center group w-full"
-          // Removed style={{ paddingLeft: `${level * 1.25}rem` }} for flat hierarchy
         >
           {/* Expand/Collapse Button */}
           {collection.children && collection.children.length > 0 ? (
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7 p-1 mr-1 flex-shrink-0 rounded hover:bg-sidebar-accent"
+              className="h-7 w-7 p-1 mr-0.5 flex-shrink-0 rounded hover:bg-sidebar-accent"
               onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}
               aria-label={isOpen ? `Collapse ${collection.name}` : `Expand ${collection.name}`}
             >
               {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
             </Button>
           ) : (
-            <span className="w-7 h-7 mr-1 flex-shrink-0"></span> // Spacer for alignment
+            <span className="w-7 h-7 mr-0.5 flex-shrink-0"></span> // Spacer for alignment
           )}
 
           {/* Main Collection Item (Name, Icon, Count) - Clickable */}
           <SidebarMenuButton
             onClick={() => onSelect(collection.id!)}
             isActive={selectedCollectionId === collection.id}
-            className="flex-grow h-auto py-1 px-1.5 text-left" // Adjusted padding
+            className="flex-grow h-auto py-1 px-1.5 text-left" 
           >
-            <Folder size={16} className="mr-1.5 flex-shrink-0" />
+            <Folder size={16} className="mr-1 flex-shrink-0" />
             <span className="truncate flex-1" title={collection.name}>{displayName}</span>
             <span className="text-xs text-sidebar-foreground/70 ml-2 pl-1 flex-shrink-0">{count}</span>
           </SidebarMenuButton>
@@ -133,7 +136,13 @@ function CollectionItemView({ collection, level, onSelect, onUpdate, imageCounts
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader><DialogTitle>Rename Collection</DialogTitle></DialogHeader>
-                <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="New collection name" />
+                <Input 
+                    value={newName} 
+                    onChange={(e) => setNewName(e.target.value)} 
+                    placeholder="New collection name"
+                    maxLength={50} 
+                />
+                <p className="text-xs text-muted-foreground mt-1">Max 50 characters.</p>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setIsRenaming(false)}>Cancel</Button>
                   <Button onClick={handleRename}>Save</Button>
@@ -145,7 +154,7 @@ function CollectionItemView({ collection, level, onSelect, onUpdate, imageCounts
                 <Button variant="ghost" size="icon" className="h-7 w-7 p-1 text-destructive hover:text-destructive" onClick={(e) => e.stopPropagation()} title={`Delete ${collection.name}`}><Trash2 size={14} /></Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
-                <AlertDialogHeader><DialogTitle>Delete Collection?</DialogTitle></AlertDialogHeader>
+                <AlertDialogHeader><AlertDialogTitle>Delete Collection?</AlertDialogTitle></AlertDialogHeader>
                 <AlertDialogDescription>Are you sure you want to delete "{collection.name}"? This action cannot be undone. If this collection contains images, they will not be deleted but will no longer be in this collection. Sub-collections will become root collections.</AlertDialogDescription>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
@@ -193,27 +202,6 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
   const flatCollectionsForSelect = useLiveQuery(
     async () => {
         const allCollections = await getCollections();
-        // Function to generate a prefixed name for the select dropdown
-        const generatePrefixedName = (collection: Collection, collections: Collection[], currentLevel: number = 0): string => {
-            const prefix = currentLevel > 0 ? '-'.repeat(currentLevel) + ' ' : '';
-            let parentName = '';
-            if (collection.parentId) {
-                const parent = collections.find(c => c.id === collection.parentId);
-                if (parent) {
-                    // This recursive call isn't quite right for flat list prefix.
-                    // We need a simpler way to get depth for a flat list for the select.
-                    // For now, let's use a simpler depth calculation or just rely on user knowing.
-                    // The hierarchical display in the main list is the primary visual cue.
-                }
-            }
-            return prefix + collection.name;
-        };
-
-        // We need a way to calculate depth for each item in the flat list for the dropdown prefix
-        // This is more complex than it seems if we want perfect prefixes in the flat dropdown.
-        // For simplicity in the dropdown, we might omit deep prefixes or just show names.
-        // The main list handles visual hierarchy.
-        // Let's just return the flat list for now, as the prefix in select can be tricky.
         return allCollections.sort((a,b) => a.name.localeCompare(b.name));
     },
     [refreshKey], [] as Collection[]
@@ -223,10 +211,9 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
   const imageCountsResult = useLiveQuery(
     async () => {
         const countsMap = new Map<number, number>();
-        const allCollections = await getCollections(); // Fetch all collections flatly
-        const allImages = await db.images.toArray(); // Fetch all images once
+        const allCollections = await getCollections(); 
+        const allImages = await db.images.toArray(); 
 
-        // Helper function to count images directly in a collection
         const countImagesDirectlyInCollection = (collectionId: number): number => {
             let count = 0;
             allImages.forEach(image => {
@@ -260,6 +247,10 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
         toast({ variant: "destructive", title: "Error", description: "Collection name cannot be empty." });
         return;
     }
+    if (newCollectionName.length > 50) {
+        toast({ variant: "destructive", title: "Error", description: "Collection name cannot exceed 50 characters." });
+        return;
+    }
     try {
       await dbAddCollection({ name: newCollectionName, parentId: dialogParentId });
       toast({ title: "Collection Created", description: `"${newCollectionName}" has been added.` });
@@ -285,7 +276,6 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
     return <div className="p-4"><Loader2 className="animate-spin" /> Loading collections...</div>;
   }
 
-  // Helper to get prefix for select options - simple depth calculation from hierarchical structure
   const getSelectPrefix = (collectionId: number | undefined, collections: Collection[], currentLevel = 0): string => {
     if (!collectionId) return '';
     
@@ -306,7 +296,7 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
 
 
   return (
-    <SidebarGroup>
+    <SidebarGroup className="px-1 py-2"> {/* Adjusted padding here */}
       <SidebarGroupLabel className="flex justify-between items-center">
         <span>Collections</span>
          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
@@ -321,15 +311,18 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
               <DialogDescription>Enter a name and optionally select a parent for your new collection.</DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="collection-name" className="text-right">Name</Label>
-                <Input
-                  id="collection-name"
-                  placeholder="Collection name"
-                  value={newCollectionName}
-                  onChange={(e) => setNewCollectionName(e.target.value)}
-                  className="col-span-3"
-                />
+              <div className="grid grid-cols-4 items-start gap-4"> {/* Changed items-center to items-start for helper text */}
+                <Label htmlFor="collection-name" className="text-right pt-2">Name</Label> {/* Added pt-2 for alignment */}
+                <div className="col-span-3">
+                    <Input
+                      id="collection-name"
+                      placeholder="Collection name"
+                      value={newCollectionName}
+                      onChange={(e) => setNewCollectionName(e.target.value)}
+                      maxLength={50}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">Max 50 characters.</p>
+                </div>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="parent-collection" className="text-right">Parent</Label>
@@ -342,7 +335,6 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">(No Parent - Root Collection)</SelectItem>
-                    {/* For select, it's better to display a flat list with prefixes representing hierarchy */}
                     {(function renderSelectOptions(collections: Collection[], level = 0) {
                         let options: JSX.Element[] = [];
                         collections.forEach(collection => {
@@ -350,7 +342,6 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
                                 <SelectItem 
                                     key={collection.id} 
                                     value={collection.id!.toString()} 
-                                    disabled={collection.id === dialogParentId /* Or logic to prevent cyclic dependencies */}
                                 >
                                     {level > 0 ? '-'.repeat(level) + ' ' : ''}{collection.name}
                                 </SelectItem>
@@ -382,7 +373,7 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
           <CollectionItemView
             key={collection.id}
             collection={collection}
-            level={0} // Root items are level 0 for prefixing
+            level={0} 
             onSelect={handleSelectCollection}
             onUpdate={doRefresh}
             imageCounts={imageCountsResult}
@@ -394,3 +385,6 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
     </SidebarGroup>
   );
 }
+
+
+    
