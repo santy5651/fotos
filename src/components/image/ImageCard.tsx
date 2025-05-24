@@ -1,20 +1,21 @@
 
 "use client";
 
-import type { ImageMetadata, Collection } from '@/types'; // Added Collection type
+import type { ImageMetadata, Collection } from '@/types';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Heart, Shield, Trash2, RotateCcw, RotateCw, Tag, Loader2, ZoomIn } from 'lucide-react'; // Added Loader2 and ZoomIn
+import { Heart, Shield, Trash2, RotateCcw, RotateCw, Tag, Loader2, ZoomIn } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { updateImage, deleteImage, db } from '@/lib/db'; // Added db
+import { updateImage, deleteImage, db } from '@/lib/db';
 import NextImage from 'next/image';
 import { useEffect, useState } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks'; // Added useLiveQuery
+import { useLiveQuery } from 'dexie-react-hooks';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import AddToCollectionDialog from '@/components/collections/AddToCollectionDialog';
-import ImageZoomModal from './ImageZoomModal'; // Import the new modal
+import ImageZoomModal from './ImageZoomModal';
+import { cn } from '@/lib/utils';
 
 interface ImageCardProps {
   image: ImageMetadata;
@@ -26,7 +27,7 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [currentRotation, setCurrentRotation] = useState(image.transform?.rotate || 0);
   const [isAddToCollectionDialogOpen, setIsAddToCollectionDialogOpen] = useState(false);
-  const [isZoomModalOpen, setIsZoomModalOpen] = useState(false); // State for zoom modal
+  const [isZoomModalOpen, setIsZoomModalOpen] = useState(false);
 
   useEffect(() => {
     if (image.file) {
@@ -41,7 +42,7 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
       return db.collections.where('id').anyOf(image.collectionIds).toArray();
     }
     return [];
-  }, [image.id, image.collectionIds], []); // Dependencies: image.id and its collectionIds, initial value empty array
+  }, [image.id, image.collectionIds], []);
 
 
   const handleFavoriteToggle = async () => {
@@ -83,11 +84,9 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
     setCurrentRotation(newRotation);
     try {
       await updateImage(image.id!, { transform: { ...image.transform, rotate: newRotation } });
-      onUpdate(); // To reflect changes if grid re-sorts or re-filters based on persisted data
+      onUpdate(); 
     } catch (error) {
       toast({ variant: "destructive", title: "Error", description: "Failed to save rotation."});
-      // Optionally revert currentRotation if persistence fails
-      // setCurrentRotation(image.transform?.rotate || 0); 
     }
   };
 
@@ -117,22 +116,100 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
     <>
       <Card className="flex flex-col justify-between shadow-lg hover:shadow-xl transition-shadow duration-300 rounded-lg overflow-hidden">
         <CardContent className="p-0">
-          <div className="aspect-[4/3] w-full overflow-hidden relative bg-muted">
+          <div className="aspect-[4/3] w-full overflow-hidden relative bg-muted group">
             <NextImage
               src={imageUrl}
               alt={image.name}
-              fill // Changed from layout="fill" objectFit="cover"
+              fill
               sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, (max-width: 1280px) 25vw, 20vw"
               style={{ 
                 objectFit: 'cover',
                 transform: `rotate(${currentRotation}deg)` 
               }}
-              className="transition-transform duration-300 ease-in-out hover:scale-105"
+              className="transition-transform duration-300 ease-in-out group-hover:scale-105"
               data-ai-hint="photo gallery"
             />
             <div className="absolute top-2 right-2 flex gap-1">
               {image.isFavorite && <Heart className="h-5 w-5 fill-red-500 text-red-500" />}
               {image.isProtected && <Shield className="h-5 w-5 fill-blue-500 text-blue-500" />}
+            </div>
+            
+            {/* Action Icons Overlay */}
+            <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/70 via-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-in-out flex justify-between items-center">
+              <div className="flex gap-0.5">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" onClick={handleFavoriteToggle} className="h-8 w-8 hover:bg-white/10">
+                      <Heart className={cn('h-4 w-4', image.isFavorite ? 'fill-red-500 text-red-500' : 'text-neutral-200 hover:text-white')} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent><p>Favorite</p></TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" onClick={handleProtectToggle} className="h-8 w-8 hover:bg-white/10">
+                      <Shield className={cn('h-4 w-4', image.isProtected ? 'fill-blue-500 text-blue-500' : 'text-neutral-200 hover:text-white')} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent><p>Protect</p></TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" onClick={() => setIsAddToCollectionDialogOpen(true)} className="h-8 w-8 hover:bg-white/10">
+                        <Tag className="h-4 w-4 text-neutral-200 hover:text-white" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent><p>Add to Collection</p></TooltipContent>
+                </Tooltip>
+                 <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" onClick={() => handleRotate('ccw')} className="h-8 w-8 hover:bg-white/10">
+                        <RotateCcw className="h-4 w-4 text-neutral-200 hover:text-white" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent><p>Rotate Left</p></TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                       <Button variant="ghost" size="icon" onClick={() => handleRotate('cw')} className="h-8 w-8 hover:bg-white/10">
+                        <RotateCw className="h-4 w-4 text-neutral-200 hover:text-white" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent><p>Rotate Right</p></TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" onClick={() => setIsZoomModalOpen(true)} className="h-8 w-8 hover:bg-white/10">
+                        <ZoomIn className="h-4 w-4 text-neutral-200 hover:text-white" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent><p>Zoom</p></TooltipContent>
+                  </Tooltip>
+              </div>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-red-400 hover:text-red-300 hover:bg-red-500/10" disabled={image.isProtected}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent><p>Delete</p></TooltipContent>
+                  </Tooltip>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This action cannot be undone. This will permanently delete "{image.name}".
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           </div>
         </CardContent>
@@ -145,10 +222,9 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
               {image.tags.length > 3 && <Badge variant="outline" className="text-xs">+{image.tags.length - 3}</Badge>}
             </div>
           )}
-          {/* Display Collection Badges */}
           {image.collectionIds && image.collectionIds.length > 0 && (
             <>
-              {imageCollections === undefined && ( // Still loading
+              {imageCollections === undefined && (
                 <div className="mt-1 flex items-center text-xs text-muted-foreground">
                   <Loader2 className="h-3 w-3 animate-spin mr-1" /> Loading collections...
                 </div>
@@ -170,83 +246,7 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
           )}
         </CardHeader>
 
-        <CardFooter className="flex flex-col items-start gap-2 p-4 pt-0">
-          <div className="flex justify-between w-full items-center">
-            <div className="flex gap-1">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" onClick={handleFavoriteToggle} className="h-8 w-8">
-                    <Heart className={`h-4 w-4 ${image.isFavorite ? 'fill-red-500 text-red-500' : 'text-muted-foreground'}`} />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent><p>Favorite</p></TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" onClick={handleProtectToggle} className="h-8 w-8">
-                    <Shield className={`h-4 w-4 ${image.isProtected ? 'fill-blue-500 text-blue-500' : 'text-muted-foreground'}`} />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent><p>Protect</p></TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" onClick={() => setIsAddToCollectionDialogOpen(true)} className="h-8 w-8">
-                      <Tag className="h-4 w-4 text-muted-foreground" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent><p>Add to Collection</p></TooltipContent>
-              </Tooltip>
-               <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" onClick={() => handleRotate('ccw')} className="h-8 w-8">
-                      <RotateCcw className="h-4 w-4 text-muted-foreground" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent><p>Rotate Left</p></TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                     <Button variant="ghost" size="icon" onClick={() => handleRotate('cw')} className="h-8 w-8">
-                      <RotateCw className="h-4 w-4 text-muted-foreground" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent><p>Rotate Right</p></TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" onClick={() => setIsZoomModalOpen(true)} className="h-8 w-8">
-                      <ZoomIn className="h-4 w-4 text-muted-foreground" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent><p>Zoom</p></TooltipContent>
-                </Tooltip>
-            </div>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" disabled={image.isProtected}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent><p>Delete</p></TooltipContent>
-                </Tooltip>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This action cannot be undone. This will permanently delete "{image.name}".
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </div>
+        <CardFooter className="px-4 pb-3 pt-2">
           <div className="text-xs text-muted-foreground w-full truncate">
             {new Date(image.createdAt).toLocaleDateString()} - {image.width}x{image.height}
           </div>
@@ -260,7 +260,7 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
           onUpdateCollections={handleCollectionsUpdated}
         />
       )}
-      {isZoomModalOpen && imageUrl && ( // Ensure imageUrl is available before rendering
+      {isZoomModalOpen && imageUrl && (
         <ImageZoomModal
           isOpen={isZoomModalOpen}
           onClose={() => setIsZoomModalOpen(false)}
@@ -272,3 +272,4 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
     </>
   );
 }
+
