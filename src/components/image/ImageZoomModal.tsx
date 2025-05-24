@@ -1,31 +1,39 @@
 
 "use client";
 
+import { useState } from 'react';
 import NextImage from 'next/image';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { X } from 'lucide-react';
+import { X, Maximize2, Minimize2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface ImageZoomModalProps {
   isOpen: boolean;
   onClose: () => void;
   imageUrl: string;
   imageName: string;
-  rotation?: number; // Optional rotation prop
+  rotation?: number;
   imageNaturalWidth: number;
   imageNaturalHeight: number;
 }
 
-export default function ImageZoomModal({ 
-  isOpen, 
-  onClose, 
-  imageUrl, 
-  imageName, 
+export default function ImageZoomModal({
+  isOpen,
+  onClose,
+  imageUrl,
+  imageName,
   rotation = 0,
   imageNaturalWidth,
   imageNaturalHeight
 }: ImageZoomModalProps) {
+  const [zoomMode, setZoomMode] = useState<'fit' | 'actual'>('fit');
+
   if (!isOpen) return null;
+
+  const toggleZoomMode = () => {
+    setZoomMode(prevMode => prevMode === 'fit' ? 'actual' : 'fit');
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -33,31 +41,66 @@ export default function ImageZoomModal({
         <DialogHeader className="sr-only">
           <DialogTitle>{imageName}</DialogTitle>
         </DialogHeader>
-        
-        <DialogClose asChild className="absolute top-2 right-2 z-50">
+
+        <div className="absolute top-2 right-2 z-50 flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleZoomMode}
+            className="h-8 w-8 rounded-full bg-black/30 hover:bg-black/50 text-white hover:text-white"
+            title={zoomMode === 'fit' ? 'View Actual Size' : 'Fit to Screen'}
+          >
+            {zoomMode === 'fit' ? <Maximize2 className="h-5 w-5" /> : <Minimize2 className="h-5 w-5" />}
+            <span className="sr-only">{zoomMode === 'fit' ? 'View Actual Size' : 'Fit to Screen'}</span>
+          </Button>
+          <DialogClose asChild>
             <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full bg-black/30 hover:bg-black/50 text-white hover:text-white">
               <X className="h-5 w-5" />
             </Button>
-        </DialogClose>
-        
-        {/* Removed flex items-center justify-center to allow scrolling to all edges of the image */}
-        <div className="relative w-full h-full overflow-auto"> 
-          <NextImage
-            src={imageUrl}
-            alt={imageName}
-            width={imageNaturalWidth}
-            height={imageNaturalHeight}
-            style={{ 
-              transform: `rotate(${rotation}deg)`,
-              maxWidth: 'none', 
-              maxHeight: 'none', 
-              // Ensuring the image itself is the source of dimensions for scrolling
-              display: 'block', // Or 'inline-block' if preferred, 'block' is fine
-            }}
-            sizes="200vw" // This prop might be less relevant when explicit width/height are used
-            priority 
-            data-ai-hint="detailed zoomed image"
-          />
+          </DialogClose>
+        </div>
+
+        <div
+          className={cn(
+            "flex-grow relative", // flex-grow to take remaining space, relative for NextImage layout="fill"
+            zoomMode === 'actual' ? "overflow-auto" : "overflow-hidden flex items-center justify-center p-1" // Add padding for 'fit' mode to ensure no edge clipping
+          )}
+        >
+          {zoomMode === 'fit' ? (
+            <NextImage
+              src={imageUrl}
+              alt={imageName}
+              layout="fill"
+              objectFit="contain"
+              style={{ transform: `rotate(${rotation}deg)` }}
+              priority
+              data-ai-hint="zoomed fitted image"
+            />
+          ) : (
+            // Wrapper for NextImage to allow transform-origin and ensure scroll container sizes correctly
+            <div className="inline-block" 
+                 style={{ 
+                    // This div will be scrolled. Its size should be the natural image size.
+                    // NextImage below will fill this.
+                 }}
+            > 
+              <NextImage
+                src={imageUrl}
+                alt={imageName}
+                width={imageNaturalWidth}
+                height={imageNaturalHeight}
+                style={{
+                  transform: `rotate(${rotation}deg)`,
+                  transformOrigin: 'center center',
+                  maxWidth: 'none',
+                  maxHeight: 'none',
+                  // display: 'block' is default for NextImage with width/height
+                }}
+                priority
+                data-ai-hint="detailed zoomed image actual size"
+              />
+            </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>
