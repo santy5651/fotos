@@ -27,6 +27,10 @@ export default function SettingsDropdown() {
   const [isImporting, setIsImporting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
+  const handleLabelClick = () => {
+    console.log("[IMPORT DEBUG] Label for import clicked.");
+  };
+
   const handleExport = async () => {
     setIsExporting(true);
     console.log("Starting data export...");
@@ -60,9 +64,8 @@ export default function SettingsDropdown() {
     if (!file) {
       console.log("[IMPORT DEBUG] No file selected for import.");
       toast({ variant: "destructive", title: "Import Canceled", description: "No file was selected." });
-      // Ensure isImporting is reset if no file is chosen, though it shouldn't be set yet.
       setIsImporting(false); 
-      event.target.value = ''; // Reset file input in case it was somehow triggered without a file
+      event.target.value = ''; 
       return;
     }
     console.log("[IMPORT DEBUG] File selected for import:", { name: file.name, size: file.size, type: file.type });
@@ -114,12 +117,12 @@ export default function SettingsDropdown() {
       console.log("[IMPORT DEBUG] db.importData finished. Warnings:", warnings);
       
       if (warnings.length > 0) {
-        toast({ title: "Import Complete with Warnings", description: `Imported with warnings: ${warnings.join('; ')}. A manual page refresh might be needed.`, duration: 10000 });
+        toast({ title: "Import Complete with Warnings", description: `Imported with warnings: ${warnings.join('; ')}. Check console for details. You may need to refresh the page.`, duration: 10000 });
       } else {
-        toast({ title: "Import Successful", description: "Data imported successfully. A manual page refresh might be needed." });
+        toast({ title: "Import Successful", description: "Data imported successfully. You may need to refresh the page." });
       }
       
-      // console.log("[IMPORT DEBUG] Page reload has been temporarily REMOVED for debugging.");
+      // console.log("[IMPORT DEBUG] Page reload has been temporarily REMOVED for debugging. Manually refresh if needed.");
       // window.location.reload(); 
       
     } catch (error) {
@@ -162,7 +165,11 @@ export default function SettingsDropdown() {
             Export Data
           </DropdownMenuItem>
           <DropdownMenuItem asChild disabled={isImporting}>
-             <label htmlFor="import-zip" className="flex items-center cursor-pointer w-full">
+             <label
+                htmlFor="import-zip"
+                className="flex items-center cursor-pointer w-full"
+                onClick={handleLabelClick} // Added onClick here
+              >
                 {isImporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
                 Import Data
               <Input id="import-zip" type="file" accept=".zip" className="hidden" onChange={handleImport} />
