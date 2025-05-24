@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Search, X } from 'lucide-react';
@@ -12,13 +13,14 @@ interface SearchBarProps {
 export default function SearchBar({ onSearch }: SearchBarProps) {
   const [searchTerm, setSearchTerm] = useState('');
 
-  const handleSearch = () => {
+  useEffect(() => {
+    // Call onSearch whenever searchTerm changes (debouncing can be added here if needed)
     onSearch(searchTerm);
-  };
+  }, [searchTerm, onSearch]);
 
   const handleClear = () => {
     setSearchTerm('');
-    onSearch('');
+    // onSearch(''); // Already handled by useEffect
   };
 
   return (
@@ -27,10 +29,9 @@ export default function SearchBar({ onSearch }: SearchBarProps) {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
           type="text"
-          placeholder="Search by name or tag..."
+          placeholder="Buscar por nombre de colección..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
           className="pl-10"
         />
         {searchTerm && (
@@ -39,12 +40,13 @@ export default function SearchBar({ onSearch }: SearchBarProps) {
             size="icon"
             className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
             onClick={handleClear}
+            aria-label="Clear search"
           >
             <X className="h-4 w-4" />
           </Button>
         )}
       </div>
-      <Button type="button" onClick={handleSearch}>Search</Button>
+      {/* Search button removed */}
     </div>
   );
 }
