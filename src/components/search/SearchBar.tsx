@@ -14,11 +14,19 @@ export default function SearchBar({ onSearch }: SearchBarProps) {
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
-    onSearch(searchTerm);
+    // Debounce search or call directly
+    const handler = setTimeout(() => {
+      onSearch(searchTerm);
+    }, 300); // Adjust delay as needed, or remove for instant search
+
+    return () => {
+      clearTimeout(handler);
+    };
   }, [searchTerm, onSearch]);
 
   const handleClear = () => {
     setSearchTerm('');
+    onSearch(''); // Ensure search is cleared immediately
   };
 
   return (
@@ -47,3 +55,4 @@ export default function SearchBar({ onSearch }: SearchBarProps) {
     </div>
   );
 }
+
