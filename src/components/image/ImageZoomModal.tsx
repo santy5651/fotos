@@ -20,6 +20,11 @@ export default function ImageZoomModal({ isOpen, onClose, imageUrl, imageName, r
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[90vw] md:max-w-[80vw] lg:max-w-[70vw] xl:max-w-[60vw] p-0 aspect-video flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm border-none shadow-2xl">
+        {/* DialogHeader and DialogTitle for accessibility */}
+        <DialogHeader className="sr-only"> {/* Visually hidden but accessible */}
+          <DialogTitle>{imageName}</DialogTitle>
+        </DialogHeader>
+        
         {/* Custom Close Button for better positioning over image potentially */}
         <DialogClose asChild className="absolute top-2 right-2 z-50">
             <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full bg-black/30 hover:bg-black/50 text-white hover:text-white">
