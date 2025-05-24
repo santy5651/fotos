@@ -5,7 +5,7 @@ import type { ImageMetadata, Collection } from '@/types'; // Added Collection ty
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Heart, Shield, Trash2, RotateCcw, RotateCw, Tag, Loader2 } from 'lucide-react'; // Added Loader2
+import { Heart, Shield, Trash2, RotateCcw, RotateCw, Tag, Loader2, ZoomIn } from 'lucide-react'; // Added Loader2 and ZoomIn
 import { useToast } from '@/hooks/use-toast';
 import { updateImage, deleteImage, db } from '@/lib/db'; // Added db
 import NextImage from 'next/image';
@@ -14,6 +14,7 @@ import { useLiveQuery } from 'dexie-react-hooks'; // Added useLiveQuery
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import AddToCollectionDialog from '@/components/collections/AddToCollectionDialog';
+import ImageZoomModal from './ImageZoomModal'; // Import the new modal
 
 interface ImageCardProps {
   image: ImageMetadata;
@@ -25,6 +26,7 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [currentRotation, setCurrentRotation] = useState(image.transform?.rotate || 0);
   const [isAddToCollectionDialogOpen, setIsAddToCollectionDialogOpen] = useState(false);
+  const [isZoomModalOpen, setIsZoomModalOpen] = useState(false); // State for zoom modal
 
   useEffect(() => {
     if (image.file) {
@@ -119,10 +121,13 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
             <NextImage
               src={imageUrl}
               alt={image.name}
-              layout="fill"
-              objectFit="cover"
+              fill // Changed from layout="fill" objectFit="cover"
+              sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, (max-width: 1280px) 25vw, 20vw"
+              style={{ 
+                objectFit: 'cover',
+                transform: `rotate(${currentRotation}deg)` 
+              }}
               className="transition-transform duration-300 ease-in-out hover:scale-105"
-              style={{ transform: `rotate(${currentRotation}deg)` }}
               data-ai-hint="photo gallery"
             />
             <div className="absolute top-2 right-2 flex gap-1">
@@ -208,6 +213,14 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
                   </TooltipTrigger>
                   <TooltipContent><p>Rotate Right</p></TooltipContent>
                 </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" onClick={() => setIsZoomModalOpen(true)} className="h-8 w-8">
+                      <ZoomIn className="h-4 w-4 text-muted-foreground" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent><p>Zoom</p></TooltipContent>
+                </Tooltip>
             </div>
             <AlertDialog>
               <AlertDialogTrigger asChild>
@@ -247,7 +260,15 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
           onUpdateCollections={handleCollectionsUpdated}
         />
       )}
+      {isZoomModalOpen && imageUrl && ( // Ensure imageUrl is available before rendering
+        <ImageZoomModal
+          isOpen={isZoomModalOpen}
+          onClose={() => setIsZoomModalOpen(false)}
+          imageUrl={imageUrl}
+          imageName={image.name}
+          rotation={currentRotation}
+        />
+      )}
     </>
   );
 }
-
