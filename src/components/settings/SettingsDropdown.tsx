@@ -54,32 +54,51 @@ export default function SettingsDropdown() {
   };
 
   const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    console.log("[IMPORT DEBUG] handleImport triggered.");
     const file = event.target.files?.[0];
-    if (!file) return;
+
+    if (!file) {
+      console.log("[IMPORT DEBUG] No file selected for import.");
+      toast({ variant: "destructive", title: "Import Canceled", description: "No file was selected." });
+      // Ensure isImporting is reset if no file is chosen, though it shouldn't be set yet.
+      setIsImporting(false); 
+      event.target.value = ''; // Reset file input in case it was somehow triggered without a file
+      return;
+    }
+    console.log("[IMPORT DEBUG] File selected for import:", { name: file.name, size: file.size, type: file.type });
 
     setIsImporting(true);
-    console.log("Starting data import from file:", file.name);
+    
     try {
+      console.log("[IMPORT DEBUG] Attempting to load ZIP with JSZip...");
       const zip = await JSZip.loadAsync(file);
-      console.log("ZIP file loaded.");
+      console.log("[IMPORT DEBUG] ZIP file loaded with JSZip. Files in zip:", Object.keys(zip.files));
+
       const metadataFile = zip.file("metadata.json");
+      console.log("[IMPORT DEBUG] Metadata file object from zip:", metadataFile ? "Found" : "Not Found");
+
       if (!metadataFile) {
-        console.error("metadata.json not found in zip.");
-        throw new Error("metadata.json not found in zip.");
+        console.error("[IMPORT DEBUG] metadata.json not found in zip.");
+        toast({ variant: "destructive", title: "Import Error", description: "metadata.json not found in the selected ZIP file." });
+        setIsImporting(false);
+        event.target.value = '';
+        return;
       }
       
       const metadataJson = await metadataFile.async("string");
-      console.log("metadata.json content retrieved. Length:", metadataJson.length);
-      // console.debug("Metadata JSON content:", metadataJson);
+      console.log("[IMPORT DEBUG] metadata.json content retrieved. Length:", metadataJson.length);
+      console.debug("[IMPORT DEBUG] Metadata JSON content (first 500 chars):", metadataJson.substring(0, 500));
 
 
       const imageFilesPromises: Promise<File>[] = [];
       const imagesFolder = zip.folder("images");
+      console.log("[IMPORT DEBUG] Images folder object from zip:", imagesFolder ? "Found" : "Not Found/Empty");
+
       if (imagesFolder) {
         imagesFolder.forEach((relativePath, zipEntry) => {
           if(!zipEntry.dir) {
-              const fileName = zipEntry.name.split('/').pop() || relativePath; // Get just the filename
-              console.log("Preparing to extract image file from zip:", zipEntry.name, "as", fileName);
+              const fileName = zipEntry.name.split('/').pop() || relativePath;
+              console.log("[IMPORT DEBUG] Preparing to extract image file from zip:", zipEntry.name, "as", fileName);
               const promise = zipEntry.async("blob").then(blob => new File([blob], fileName, {type: blob.type}));
               imageFilesPromises.push(promise);
           }
@@ -87,28 +106,30 @@ export default function SettingsDropdown() {
       }
       
       const imageFiles = await Promise.all(imageFilesPromises);
-      console.log(`Successfully prepared ${imageFiles.length} image files from zip.`);
-      // imageFiles.forEach(f => console.debug("Prepared file:", f.name, f.size, f.type));
+      console.log(`[IMPORT DEBUG] Successfully prepared ${imageFiles.length} image files from zip.`);
+      imageFiles.forEach(f => console.debug("[IMPORT DEBUG] Prepared file details:", {name: f.name, size: f.size, type: f.type}));
 
+      console.log("[IMPORT DEBUG] Calling db.importData with prepared metadata and files...");
       const warnings = await importData(metadataJson, imageFiles);
+      console.log("[IMPORT DEBUG] db.importData finished. Warnings:", warnings);
       
       if (warnings.length > 0) {
-        toast({ title: "Import Partially Successful", description: `Imported with warnings: ${warnings.join('; ')}`, duration: 10000 });
-        console.warn("Import completed with warnings:", warnings);
+        toast({ title: "Import Complete with Warnings", description: `Imported with warnings: ${warnings.join('; ')}. A manual page refresh might be needed.`, duration: 10000 });
       } else {
-        toast({ title: "Import Successful", description: "Data imported successfully." });
-        console.log("Import completed successfully.");
+        toast({ title: "Import Successful", description: "Data imported successfully. A manual page refresh might be needed." });
       }
       
-      // Trigger a refresh of the app data
-      console.log("Reloading page to reflect imported data...");
-      window.location.reload(); 
+      // console.log("[IMPORT DEBUG] Page reload has been temporarily REMOVED for debugging.");
+      // window.location.reload(); 
+      
     } catch (error) {
-      console.error("Import error:", error);
-      toast({ variant: "destructive", title: "Import Failed", description: (error as Error).message });
+      console.error("[IMPORT DEBUG] Critical error during import process in SettingsDropdown:", error);
+      toast({ variant: "destructive", title: "Import Failed Critically", description: `An unexpected error occurred: ${(error as Error).message}. Check console for details.` });
+    } finally {
+      setIsImporting(false);
+      event.target.value = ''; // Reset file input
+      console.log("[IMPORT DEBUG] handleImport finished.");
     }
-    setIsImporting(false);
-    event.target.value = ''; // Reset file input
   };
 
   const handleDeleteAll = async () => {
