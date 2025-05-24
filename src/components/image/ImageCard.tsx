@@ -1,18 +1,19 @@
 
 "use client";
 
-import type { ImageMetadata } from '@/types';
+import type { ImageMetadata, Collection } from '@/types'; // Added Collection type
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Heart, Shield, Trash2, RotateCcw, RotateCw, Tag } from 'lucide-react'; // Added Tag icon
+import { Heart, Shield, Trash2, RotateCcw, RotateCw, Tag, Loader2 } from 'lucide-react'; // Added Loader2
 import { useToast } from '@/hooks/use-toast';
-import { updateImage, deleteImage } from '@/lib/db';
+import { updateImage, deleteImage, db } from '@/lib/db'; // Added db
 import NextImage from 'next/image';
 import { useEffect, useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks'; // Added useLiveQuery
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import AddToCollectionDialog from '@/components/collections/AddToCollectionDialog'; // New import
+import AddToCollectionDialog from '@/components/collections/AddToCollectionDialog';
 
 interface ImageCardProps {
   image: ImageMetadata;
@@ -32,6 +33,14 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
       return () => URL.revokeObjectURL(url);
     }
   }, [image.file]);
+
+  const imageCollections = useLiveQuery(async () => {
+    if (image.collectionIds && image.collectionIds.length > 0) {
+      return db.collections.where('id').anyOf(image.collectionIds).toArray();
+    }
+    return [];
+  }, [image.id, image.collectionIds], []); // Dependencies: image.id and its collectionIds, initial value empty array
+
 
   const handleFavoriteToggle = async () => {
     try {
@@ -67,17 +76,21 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
     }
   };
   
-  const handleRotate = (direction: 'cw' | 'ccw') => {
+  const handleRotate = async (direction: 'cw' | 'ccw') => {
     const newRotation = direction === 'cw' ? (currentRotation + 90) % 360 : (currentRotation - 90 + 360) % 360;
     setCurrentRotation(newRotation);
-    // To persist, update `image.transform.rotate` in DB via `updateImage`
-    // For now, visual only
-    // await updateImage(image.id!, { transform: { ...image.transform, rotate: newRotation } });
-    // onUpdate(); // If persisting
+    try {
+      await updateImage(image.id!, { transform: { ...image.transform, rotate: newRotation } });
+      onUpdate(); // To reflect changes if grid re-sorts or re-filters based on persisted data
+    } catch (error) {
+      toast({ variant: "destructive", title: "Error", description: "Failed to save rotation."});
+      // Optionally revert currentRotation if persistence fails
+      // setCurrentRotation(image.transform?.rotate || 0); 
+    }
   };
 
   const handleCollectionsUpdated = () => {
-    onUpdate(); // Re-fetch/re-render the image grid
+    onUpdate();
     toast({ title: "Collections Updated", description: `Image "${image.name}" has been updated.` });
   }
 
@@ -126,6 +139,29 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
               {image.tags.slice(0,3).map(tag => <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>)}
               {image.tags.length > 3 && <Badge variant="outline" className="text-xs">+{image.tags.length - 3}</Badge>}
             </div>
+          )}
+          {/* Display Collection Badges */}
+          {image.collectionIds && image.collectionIds.length > 0 && (
+            <>
+              {imageCollections === undefined && ( // Still loading
+                <div className="mt-1 flex items-center text-xs text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin mr-1" /> Loading collections...
+                </div>
+              )}
+              {imageCollections && imageCollections.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {imageCollections.map(collection => (
+                    <Badge 
+                      key={collection.id} 
+                      variant="outline"
+                      className="text-xs font-normal border-primary/40 text-primary/90 hover:bg-primary/10"
+                    >
+                      {collection.name}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </CardHeader>
 
@@ -214,3 +250,4 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
     </>
   );
 }
+
