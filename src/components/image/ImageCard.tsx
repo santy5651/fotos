@@ -246,10 +246,40 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
           )}
         </CardHeader>
 
-        <CardFooter className="px-4 pb-3 pt-2">
-          <div className="text-xs text-muted-foreground w-full truncate">
+        <CardFooter className="flex justify-between items-center px-4 pb-3 pt-2">
+          <div className="text-xs text-muted-foreground truncate">
             {new Date(image.createdAt).toLocaleDateString()} - {image.width}x{image.height}
           </div>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-7 w-7 text-muted-foreground hover:text-destructive" 
+                    disabled={image.isProtected}
+                    aria-label="Delete image"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent><p>Delete Image</p></TooltipContent>
+              </Tooltip>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This action cannot be undone. This will permanently delete "{image.name}".
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </CardFooter>
       </Card>
       {isAddToCollectionDialogOpen && (
@@ -272,4 +302,3 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
     </>
   );
 }
-
