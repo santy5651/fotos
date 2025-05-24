@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState, useCallback } from 'react';
@@ -88,70 +87,72 @@ function CollectionItemView({ collection, level, onSelect, onUpdate, imageCounts
   };
 
   return (
-    <AliasedSidebarMenuItem>
-      <div
-        className="flex items-center group w-full"
-        style={{ paddingLeft: `${level * 1.25}rem` }} // Indentation for hierarchy
-      >
-        {/* Expand/Collapse Button */}
-        {collection.children && collection.children.length > 0 ? (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 p-1 mr-1 flex-shrink-0 rounded hover:bg-sidebar-accent"
-            onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}
-            aria-label={isOpen ? `Collapse ${collection.name}` : `Expand ${collection.name}`}
-          >
-            {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-          </Button>
-        ) : (
-          <span className="w-7 h-7 mr-1 flex-shrink-0"></span> // Spacer for alignment
-        )}
-
-        {/* Main Collection Item (Name, Icon, Count) - Clickable */}
-        <SidebarMenuButton
-          onClick={() => onSelect(collection.id!)}
-          isActive={selectedCollectionId === collection.id}
-          className="flex-grow h-auto py-1 px-1.5 text-left" // Adjusted padding
+    <>
+      <AliasedSidebarMenuItem>
+        <div
+          className="flex items-center group w-full"
+          style={{ paddingLeft: `${level * 1.25}rem` }} // Indentation for hierarchy
         >
-          <Folder size={16} className="mr-1.5 flex-shrink-0" />
-          <span className="truncate flex-1">{collection.name}</span>
-          <span className="text-xs text-sidebar-foreground/70 ml-2 pl-1 flex-shrink-0">{count}</span>
-        </SidebarMenuButton>
+          {/* Expand/Collapse Button */}
+          {collection.children && collection.children.length > 0 ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 p-1 mr-1 flex-shrink-0 rounded hover:bg-sidebar-accent"
+              onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}
+              aria-label={isOpen ? `Collapse ${collection.name}` : `Expand ${collection.name}`}
+            >
+              {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            </Button>
+          ) : (
+            <span className="w-7 h-7 mr-1 flex-shrink-0"></span> // Spacer for alignment
+          )}
 
-        {/* Action Buttons (Add Sub, Rename, Delete) - Appear on hover */}
-        <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center flex-shrink-0 ml-1 pr-1">
-           <Button variant="ghost" size="icon" className="h-7 w-7 p-1" onClick={(e) => {e.stopPropagation(); onOpenCreateSubCollectionDialog(collection.id!)}}>
-            <FolderPlus size={14} />
-           </Button>
-           <Dialog open={isRenaming} onOpenChange={setIsRenaming}>
-            <DialogTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7 p-1" onClick={(e) => e.stopPropagation()}><Edit2 size={14} /></Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader><DialogTitle>Rename Collection</DialogTitle></DialogHeader>
-              <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="New collection name" />
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsRenaming(false)}>Cancel</Button>
-                <Button onClick={handleRename}>Save</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7 p-1 text-destructive hover:text-destructive" onClick={(e) => e.stopPropagation()}><Trash2 size={14} /></Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader><DialogTitle>Delete Collection?</DialogTitle></AlertDialogHeader>
-              <AlertDialogDescription>Are you sure you want to delete "{collection.name}"? This action cannot be undone. If this collection contains images, they will not be deleted but will no longer be in this collection.</AlertDialogDescription>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          {/* Main Collection Item (Name, Icon, Count) - Clickable */}
+          <SidebarMenuButton
+            onClick={() => onSelect(collection.id!)}
+            isActive={selectedCollectionId === collection.id}
+            className="flex-grow h-auto py-1 px-1.5 text-left" // Adjusted padding
+          >
+            <Folder size={16} className="mr-1.5 flex-shrink-0" />
+            <span className="truncate flex-1">{collection.name}</span>
+            <span className="text-xs text-sidebar-foreground/70 ml-2 pl-1 flex-shrink-0">{count}</span>
+          </SidebarMenuButton>
+
+          {/* Action Buttons (Add Sub, Rename, Delete) - Appear on hover */}
+          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center flex-shrink-0 ml-1 pr-1">
+             <Button variant="ghost" size="icon" className="h-7 w-7 p-1" onClick={(e) => {e.stopPropagation(); onOpenCreateSubCollectionDialog(collection.id!)}}>
+              <FolderPlus size={14} />
+             </Button>
+             <Dialog open={isRenaming} onOpenChange={setIsRenaming}>
+              <DialogTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7 p-1" onClick={(e) => e.stopPropagation()}><Edit2 size={14} /></Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader><DialogTitle>Rename Collection</DialogTitle></DialogHeader>
+                <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="New collection name" />
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsRenaming(false)}>Cancel</Button>
+                  <Button onClick={handleRename}>Save</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7 p-1 text-destructive hover:text-destructive" onClick={(e) => e.stopPropagation()}><Trash2 size={14} /></Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader><DialogTitle>Delete Collection?</DialogTitle></AlertDialogHeader>
+                <AlertDialogDescription>Are you sure you want to delete "{collection.name}"? This action cannot be undone. If this collection contains images, they will not be deleted but will no longer be in this collection.</AlertDialogDescription>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
         </div>
-      </div>
+      </AliasedSidebarMenuItem>
       {isOpen && collection.children && collection.children.length > 0 && (
         <>
           {collection.children.map(child => (
@@ -168,7 +169,7 @@ function CollectionItemView({ collection, level, onSelect, onUpdate, imageCounts
           ))}
         </>
       )}
-    </AliasedSidebarMenuItem>
+    </>
   );
 }
 
@@ -304,7 +305,7 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
                   <SelectContent>
                     <SelectItem value="none">(No Parent - Root Collection)</SelectItem>
                     {flatCollectionsForSelect.map((collection) => (
-                      <SelectItem key={collection.id} value={collection.id!.toString()} disabled={collection.id === dialogParentId}>
+                      <SelectItem key={collection.id} value={collection.id!.toString()} disabled={collection.id === dialogParentId || collection.id === selectedCollectionId /* Prevent selecting itself or its own children implicitly */}>
                         {collection.name}
                       </SelectItem>
                     ))}
