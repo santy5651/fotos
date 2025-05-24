@@ -123,7 +123,7 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
               fill
               sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, (max-width: 1280px) 25vw, 20vw"
               style={{ 
-                objectFit: 'contain',
+                objectFit: 'contain', // Changed from 'cover'
                 transform: `rotate(${currentRotation}deg)` 
               }}
               className="transition-transform duration-300 ease-in-out group-hover:scale-105"
@@ -134,9 +134,8 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
               {image.isProtected && <Shield className="h-5 w-5 fill-blue-500 text-blue-500" />}
             </div>
             
-            {/* Action Icons Overlay */}
             <div className="absolute bottom-0 left-0 right-0 px-1 py-1 bg-gradient-to-t from-black/70 via-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-in-out flex justify-start items-center">
-              <div className="flex gap-0.5 flex-wrap"> {/* Added flex-wrap here */}
+              <div className="flex gap-0.5 flex-wrap">
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button variant="ghost" size="icon" onClick={handleFavoriteToggle} className="h-[28px] w-[28px] p-1 hover:bg-white/10">
@@ -238,7 +237,6 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
           <div className="text-xs text-muted-foreground truncate">
             {new Date(image.createdAt).toLocaleDateString()} - {image.width}x{image.height}
           </div>
-           {/* AlertDialogTrigger directly wraps Button, Tooltip removed from this specific delete instance */}
            <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button
@@ -281,9 +279,10 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
           imageUrl={imageUrl}
           imageName={image.name}
           rotation={currentRotation}
+          imageNaturalWidth={image.width}
+          imageNaturalHeight={image.height}
         />
       )}
     </>
   );
 }
-
