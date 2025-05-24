@@ -1,18 +1,18 @@
+
 "use client";
 
 import type { ImageMetadata } from '@/types';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Label } from '@/components/ui/label';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Heart, Shield, Trash2, RotateCcw, RotateCw, Edit3, Tag } from 'lucide-react';
+import { Heart, Shield, Trash2, RotateCcw, RotateCw, Tag } from 'lucide-react'; // Added Tag icon
 import { useToast } from '@/hooks/use-toast';
 import { updateImage, deleteImage } from '@/lib/db';
-import NextImage from 'next/image'; // Using next/image for potential optimization, though URL.createObjectURL is primary
+import NextImage from 'next/image';
 import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import AddToCollectionDialog from '@/components/collections/AddToCollectionDialog'; // New import
 
 interface ImageCardProps {
   image: ImageMetadata;
@@ -23,6 +23,7 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
   const { toast } = useToast();
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [currentRotation, setCurrentRotation] = useState(image.transform?.rotate || 0);
+  const [isAddToCollectionDialogOpen, setIsAddToCollectionDialogOpen] = useState(false);
 
   useEffect(() => {
     if (image.file) {
@@ -69,9 +70,16 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
   const handleRotate = (direction: 'cw' | 'ccw') => {
     const newRotation = direction === 'cw' ? (currentRotation + 90) % 360 : (currentRotation - 90 + 360) % 360;
     setCurrentRotation(newRotation);
-    // Note: This rotation is visual only and not persisted in DB for Phase 1 as per simplified approach
     // To persist, update `image.transform.rotate` in DB via `updateImage`
+    // For now, visual only
+    // await updateImage(image.id!, { transform: { ...image.transform, rotate: newRotation } });
+    // onUpdate(); // If persisting
   };
+
+  const handleCollectionsUpdated = () => {
+    onUpdate(); // Re-fetch/re-render the image grid
+    toast({ title: "Collections Updated", description: `Image "${image.name}" has been updated.` });
+  }
 
 
   if (!imageUrl) {
@@ -91,100 +99,118 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
   }
 
   return (
-    <Card className="flex flex-col justify-between shadow-lg hover:shadow-xl transition-shadow duration-300 rounded-lg overflow-hidden">
-      <CardContent className="p-0">
-        <div className="aspect-[4/3] w-full overflow-hidden relative bg-muted">
-          <NextImage
-            src={imageUrl}
-            alt={image.name}
-            layout="fill"
-            objectFit="cover"
-            className="transition-transform duration-300 ease-in-out hover:scale-105"
-            style={{ transform: `rotate(${currentRotation}deg)` }}
-            data-ai-hint="photo gallery"
-          />
-          <div className="absolute top-2 right-2 flex gap-1">
-            {image.isFavorite && <Heart className="h-5 w-5 fill-red-500 text-red-500" />}
-            {image.isProtected && <Shield className="h-5 w-5 fill-blue-500 text-blue-500" />}
+    <>
+      <Card className="flex flex-col justify-between shadow-lg hover:shadow-xl transition-shadow duration-300 rounded-lg overflow-hidden">
+        <CardContent className="p-0">
+          <div className="aspect-[4/3] w-full overflow-hidden relative bg-muted">
+            <NextImage
+              src={imageUrl}
+              alt={image.name}
+              layout="fill"
+              objectFit="cover"
+              className="transition-transform duration-300 ease-in-out hover:scale-105"
+              style={{ transform: `rotate(${currentRotation}deg)` }}
+              data-ai-hint="photo gallery"
+            />
+            <div className="absolute top-2 right-2 flex gap-1">
+              {image.isFavorite && <Heart className="h-5 w-5 fill-red-500 text-red-500" />}
+              {image.isProtected && <Shield className="h-5 w-5 fill-blue-500 text-blue-500" />}
+            </div>
           </div>
-        </div>
-      </CardContent>
-      
-      <CardHeader className="pt-4 pb-2 px-4">
-        <CardTitle className="text-sm font-medium truncate" title={image.name}>{image.name}</CardTitle>
-        {image.tags && image.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-1">
-            {image.tags.slice(0,3).map(tag => <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>)}
-            {image.tags.length > 3 && <Badge variant="outline" className="text-xs">+{image.tags.length - 3}</Badge>}
-          </div>
-        )}
-      </CardHeader>
+        </CardContent>
+        
+        <CardHeader className="pt-4 pb-2 px-4">
+          <CardTitle className="text-sm font-medium truncate" title={image.name}>{image.name}</CardTitle>
+          {image.tags && image.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {image.tags.slice(0,3).map(tag => <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>)}
+              {image.tags.length > 3 && <Badge variant="outline" className="text-xs">+{image.tags.length - 3}</Badge>}
+            </div>
+          )}
+        </CardHeader>
 
-      <CardFooter className="flex flex-col items-start gap-2 p-4 pt-0">
-        <div className="flex justify-between w-full items-center">
-          <div className="flex gap-1">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={handleFavoriteToggle} className="h-8 w-8">
-                  <Heart className={`h-4 w-4 ${image.isFavorite ? 'fill-red-500 text-red-500' : 'text-muted-foreground'}`} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent><p>Favorite</p></TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={handleProtectToggle} className="h-8 w-8">
-                  <Shield className={`h-4 w-4 ${image.isProtected ? 'fill-blue-500 text-blue-500' : 'text-muted-foreground'}`} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent><p>Protect</p></TooltipContent>
-            </Tooltip>
-             <Tooltip>
+        <CardFooter className="flex flex-col items-start gap-2 p-4 pt-0">
+          <div className="flex justify-between w-full items-center">
+            <div className="flex gap-1">
+              <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" onClick={() => handleRotate('ccw')} className="h-8 w-8">
-                    <RotateCcw className="h-4 w-4 text-muted-foreground" />
+                  <Button variant="ghost" size="icon" onClick={handleFavoriteToggle} className="h-8 w-8">
+                    <Heart className={`h-4 w-4 ${image.isFavorite ? 'fill-red-500 text-red-500' : 'text-muted-foreground'}`} />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent><p>Rotate Left</p></TooltipContent>
+                <TooltipContent><p>Favorite</p></TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
-                   <Button variant="ghost" size="icon" onClick={() => handleRotate('cw')} className="h-8 w-8">
-                    <RotateCw className="h-4 w-4 text-muted-foreground" />
+                  <Button variant="ghost" size="icon" onClick={handleProtectToggle} className="h-8 w-8">
+                    <Shield className={`h-4 w-4 ${image.isProtected ? 'fill-blue-500 text-blue-500' : 'text-muted-foreground'}`} />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent><p>Rotate Right</p></TooltipContent>
+                <TooltipContent><p>Protect</p></TooltipContent>
               </Tooltip>
+              <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" onClick={() => setIsAddToCollectionDialogOpen(true)} className="h-8 w-8">
+                      <Tag className="h-4 w-4 text-muted-foreground" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent><p>Add to Collection</p></TooltipContent>
+              </Tooltip>
+               <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" onClick={() => handleRotate('ccw')} className="h-8 w-8">
+                      <RotateCcw className="h-4 w-4 text-muted-foreground" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent><p>Rotate Left</p></TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                     <Button variant="ghost" size="icon" onClick={() => handleRotate('cw')} className="h-8 w-8">
+                      <RotateCw className="h-4 w-4 text-muted-foreground" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent><p>Rotate Right</p></TooltipContent>
+                </Tooltip>
+            </div>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" disabled={image.isProtected}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent><p>Delete</p></TooltipContent>
+                </Tooltip>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This action cannot be undone. This will permanently delete "{image.name}".
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" disabled={image.isProtected}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent><p>Delete</p></TooltipContent>
-              </Tooltip>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This action cannot be undone. This will permanently delete "{image.name}".
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
-        <div className="text-xs text-muted-foreground w-full truncate">
-          {new Date(image.createdAt).toLocaleDateString()} - {image.width}x{image.height}
-        </div>
-      </CardFooter>
-    </Card>
+          <div className="text-xs text-muted-foreground w-full truncate">
+            {new Date(image.createdAt).toLocaleDateString()} - {image.width}x{image.height}
+          </div>
+        </CardFooter>
+      </Card>
+      {isAddToCollectionDialogOpen && (
+        <AddToCollectionDialog
+          image={image}
+          isOpen={isAddToCollectionDialogOpen}
+          onClose={() => setIsAddToCollectionDialogOpen(false)}
+          onUpdateCollections={handleCollectionsUpdated}
+        />
+      )}
+    </>
   );
 }
