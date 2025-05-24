@@ -75,9 +75,13 @@ function CollectionItemView({ collection, level, onSelect, onUpdate, imageCounts
 
   const handleDelete = async () => {
     try {
-      await db.collections.delete(collection.id!); // Assumes db.collections.delete handles cascading or checks
+      await db.collections.delete(collection.id!);
       toast({ title: "Collection Deleted", description: `"${collection.name}" has been deleted.` });
       onUpdate();
+      // If the deleted collection was selected, select "All Images"
+      if (selectedCollectionId === collection.id) {
+        onSelect(null);
+      }
     } catch (error) {
        toast({ variant: "destructive", title: "Error Deleting Collection", description: (error as Error).message });
     }
@@ -85,33 +89,48 @@ function CollectionItemView({ collection, level, onSelect, onUpdate, imageCounts
 
   return (
     <AliasedSidebarMenuItem>
-      <div className="flex items-center group">
+      <div
+        className="flex items-center group w-full"
+        style={{ paddingLeft: `${level * 1.25}rem` }} // Indentation for hierarchy
+      >
+        {/* Expand/Collapse Button */}
+        {collection.children && collection.children.length > 0 ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 p-1 mr-1 flex-shrink-0 rounded hover:bg-sidebar-accent"
+            onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}
+            aria-label={isOpen ? `Collapse ${collection.name}` : `Expand ${collection.name}`}
+          >
+            {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          </Button>
+        ) : (
+          <span className="w-7 h-7 mr-1 flex-shrink-0"></span> // Spacer for alignment
+        )}
+
+        {/* Main Collection Item (Name, Icon, Count) - Clickable */}
         <SidebarMenuButton
           onClick={() => onSelect(collection.id!)}
           isActive={selectedCollectionId === collection.id}
-          className="flex-grow"
-          style={{ paddingLeft: `${level * 1.5 + 0.5}rem` }}
+          className="flex-grow h-auto py-1 px-1.5 text-left" // Adjusted padding
         >
-          {collection.children && collection.children.length > 0 && (
-            <button onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }} className="mr-1 p-0.5 rounded hover:bg-sidebar-accent">
-              {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-            </button>
-          )}
-          {!collection.children || collection.children.length === 0 && <Folder size={16} className="mr-2 flex-shrink-0" />}
+          <Folder size={16} className="mr-1.5 flex-shrink-0" />
           <span className="truncate flex-1">{collection.name}</span>
-          <span className="text-xs text-muted-foreground ml-auto mr-2">{count}</span>
+          <span className="text-xs text-sidebar-foreground/70 ml-2 pl-1 flex-shrink-0">{count}</span>
         </SidebarMenuButton>
-        <div className="opacity-0 group-hover:opacity-100 transition-opacity pr-1 flex items-center">
-           <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => {e.stopPropagation(); onOpenCreateSubCollectionDialog(collection.id!)}}>
+
+        {/* Action Buttons (Add Sub, Rename, Delete) - Appear on hover */}
+        <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center flex-shrink-0 ml-1 pr-1">
+           <Button variant="ghost" size="icon" className="h-7 w-7 p-1" onClick={(e) => {e.stopPropagation(); onOpenCreateSubCollectionDialog(collection.id!)}}>
             <FolderPlus size={14} />
            </Button>
            <Dialog open={isRenaming} onOpenChange={setIsRenaming}>
             <DialogTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-6 w-6"><Edit2 size={14} /></Button>
+              <Button variant="ghost" size="icon" className="h-7 w-7 p-1" onClick={(e) => e.stopPropagation()}><Edit2 size={14} /></Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader><DialogTitle>Rename Collection</DialogTitle></DialogHeader>
-              <Input value={newName} onChange={(e) => setNewName(e.target.value)} />
+              <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="New collection name" />
               <DialogFooter>
                 <Button variant="outline" onClick={() => setIsRenaming(false)}>Cancel</Button>
                 <Button onClick={handleRename}>Save</Button>
@@ -120,11 +139,11 @@ function CollectionItemView({ collection, level, onSelect, onUpdate, imageCounts
           </Dialog>
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive"><Trash2 size={14} /></Button>
+              <Button variant="ghost" size="icon" className="h-7 w-7 p-1 text-destructive hover:text-destructive" onClick={(e) => e.stopPropagation()}><Trash2 size={14} /></Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader><DialogTitle>Delete Collection?</DialogTitle></AlertDialogHeader>
-              <AlertDialogDescription>Are you sure you want to delete "{collection.name}"? This cannot be undone.</AlertDialogDescription>
+              <AlertDialogDescription>Are you sure you want to delete "{collection.name}"? This action cannot be undone. If this collection contains images, they will not be deleted but will no longer be in this collection.</AlertDialogDescription>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
                 <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
@@ -134,7 +153,6 @@ function CollectionItemView({ collection, level, onSelect, onUpdate, imageCounts
         </div>
       </div>
       {isOpen && collection.children && collection.children.length > 0 && (
-        // Removed SidebarMenuSub from here as per original styling. Nesting is handled by padding.
         <>
           {collection.children.map(child => (
             <CollectionItemView
@@ -169,28 +187,52 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
   );
 
   const flatCollectionsForSelect = useLiveQuery(
-    async () => getCollections(), // Fetches a flat list of all collections
+    async () => getCollections(), 
     [refreshKey], [] as Collection[]
   );
 
   const imageCountsResult = useLiveQuery(
     async () => {
-      const countsMap = new Map<number, number>();
-      if(flatCollectionsForSelect) {
-        for(const coll of flatCollectionsForSelect) {
-          if(coll.id) {
-             const count = await db.images.where('collectionIds').equals(coll.id).count();
-             countsMap.set(coll.id, count);
-          }
+        const countsMap = new Map<number, number>();
+        const allCollections = await getCollections(); // Fetch all collections flatly
+        const allImages = await db.images.toArray(); // Fetch all images once
+
+        // Helper function to recursively count images for a collection and its children
+        const countImagesRecursive = (collectionId: number): number => {
+            let count = 0;
+            // Count images directly in this collection
+            allImages.forEach(image => {
+                if (image.collectionIds && image.collectionIds.includes(collectionId)) {
+                    count++;
+                }
+            });
+            // Find children of this collection
+            const children = allCollections.filter(c => c.parentId === collectionId);
+            // Recursively count for children and add to this collection's count
+            // This line was causing double counting if not careful.
+            // For now, we only want images directly in the collection for the display count.
+            // If a cumulative count is desired, logic here would change.
+            // children.forEach(child => {
+            //     count += countImagesRecursive(child.id!);
+            // });
+            return count;
+        };
+
+        for (const coll of allCollections) {
+            if (coll.id) {
+                countsMap.set(coll.id, countImagesRecursive(coll.id));
+            }
         }
-      }
-      return countsMap;
-    }, [flatCollectionsForSelect, refreshKey], new Map<number,number>()
+        return countsMap;
+    },
+    [refreshKey], // Re-run when collections or images might have changed
+    new Map<number, number>()
   );
+
 
   const openCreateCollectionDialog = (parentId: number | null) => {
     setDialogParentId(parentId);
-    setNewCollectionName(''); // Reset name for new entry
+    setNewCollectionName(''); 
     setIsCreateDialogOpen(true);
   };
 
@@ -215,6 +257,10 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
     setSelectedCollectionId(collectionId);
     onCollectionSelect(collectionId);
   }
+  
+  const doRefresh = useCallback(() => {
+    setRefreshKey(prev => prev + 1);
+  }, []);
   
   if (!hierarchicalCollections || !imageCountsResult || !flatCollectionsForSelect) {
     return <div className="p-4"><Loader2 className="animate-spin" /> Loading collections...</div>;
@@ -258,7 +304,7 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
                   <SelectContent>
                     <SelectItem value="none">(No Parent - Root Collection)</SelectItem>
                     {flatCollectionsForSelect.map((collection) => (
-                      <SelectItem key={collection.id} value={collection.id!.toString()}>
+                      <SelectItem key={collection.id} value={collection.id!.toString()} disabled={collection.id === dialogParentId}>
                         {collection.name}
                       </SelectItem>
                     ))}
@@ -285,7 +331,7 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
             collection={collection}
             level={0}
             onSelect={handleSelectCollection}
-            onUpdate={() => setRefreshKey(prev => prev + 1)}
+            onUpdate={doRefresh}
             imageCounts={imageCountsResult}
             selectedCollectionId={selectedCollectionId}
             onOpenCreateSubCollectionDialog={openCreateCollectionDialog}
@@ -295,3 +341,4 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
     </SidebarGroup>
   );
 }
+
