@@ -13,12 +13,13 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { FileImage, Settings, BarChartBig } from "lucide-react";
+import { FileImage, Settings, BarChartBig, Tag as TagIcon } from "lucide-react";
 import CollectionsPanel from '@/components/collections/CollectionsPanel';
 import ImageUpload from '@/components/image/ImageUpload';
 import SearchBar from '@/components/search/SearchBar';
 import SettingsDropdown from '@/components/settings/SettingsDropdown';
 import StatisticsModal from '@/components/stats/StatisticsModal';
+import TagExplorerModal from '@/components/tags/TagExplorerModal';
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -29,6 +30,7 @@ interface AppLayoutProps {
 
 export default function AppLayout({ children, onSearch, onCollectionSelect, onUploadComplete }: AppLayoutProps) {
   const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
+  const [isTagExplorerModalOpen, setIsTagExplorerModalOpen] = useState(false);
 
   return (
     <SidebarProvider defaultOpen={true}>
@@ -54,7 +56,11 @@ export default function AppLayout({ children, onSearch, onCollectionSelect, onUp
             <SearchBar onSearch={onSearch} />
           </div>
           <ImageUpload onUploadComplete={onUploadComplete} />
-          <Button variant="outline" size="icon" onClick={() => setIsStatsModalOpen(true)}>
+          <Button variant="outline" size="icon" onClick={() => setIsTagExplorerModalOpen(true)} title="View All Tags">
+            <TagIcon className="h-5 w-5" />
+            <span className="sr-only">View All Tags</span>
+          </Button>
+          <Button variant="outline" size="icon" onClick={() => setIsStatsModalOpen(true)} title="View Statistics">
             <BarChartBig className="h-5 w-5" />
             <span className="sr-only">View Statistics</span>
           </Button>
@@ -65,6 +71,7 @@ export default function AppLayout({ children, onSearch, onCollectionSelect, onUp
         </main>
       </SidebarInset>
       {isStatsModalOpen && <StatisticsModal isOpen={isStatsModalOpen} onClose={() => setIsStatsModalOpen(false)} />}
+      {isTagExplorerModalOpen && <TagExplorerModal isOpen={isTagExplorerModalOpen} onClose={() => setIsTagExplorerModalOpen(false)} />}
     </SidebarProvider>
   );
 }
