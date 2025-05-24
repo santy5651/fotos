@@ -40,7 +40,8 @@ export default function ImageZoomModal({
             </Button>
         </DialogClose>
         
-        <div className="relative w-full h-full flex items-center justify-center overflow-auto p-4"> {/* Added overflow-auto and padding */}
+        {/* Removed p-4 from this div to allow scrolling to the very edges */}
+        <div className="relative w-full h-full flex items-center justify-center overflow-auto"> 
           <NextImage
             src={imageUrl}
             alt={imageName}
@@ -48,12 +49,12 @@ export default function ImageZoomModal({
             height={imageNaturalHeight}
             style={{ 
               transform: `rotate(${rotation}deg)`,
-              maxWidth: 'none', // Allow image to exceed parent's width if natural size is larger
-              maxHeight: 'none', // Allow image to exceed parent's height if natural size is larger
+              maxWidth: 'none', 
+              maxHeight: 'none', 
             }}
-            sizes="200vw" // Hint that image could be larger than viewport, adjust as needed
+            sizes="200vw" 
             priority 
-            data-ai-hint="zoomed image"
+            data-ai-hint="detailed zoomed image"
           />
         </div>
       </DialogContent>
