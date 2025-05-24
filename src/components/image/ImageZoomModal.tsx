@@ -29,7 +29,7 @@ export default function ImageZoomModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="w-[90vw] h-[90vh] p-0 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm border-none shadow-2xl">
+      <DialogContent className="w-[90vw] h-[90vh] p-0 flex flex-col bg-background/80 backdrop-blur-sm border-none shadow-2xl">
         <DialogHeader className="sr-only">
           <DialogTitle>{imageName}</DialogTitle>
         </DialogHeader>
@@ -40,8 +40,8 @@ export default function ImageZoomModal({
             </Button>
         </DialogClose>
         
-        {/* Removed p-4 from this div to allow scrolling to the very edges */}
-        <div className="relative w-full h-full flex items-center justify-center overflow-auto"> 
+        {/* Removed flex items-center justify-center to allow scrolling to all edges of the image */}
+        <div className="relative w-full h-full overflow-auto"> 
           <NextImage
             src={imageUrl}
             alt={imageName}
@@ -51,8 +51,10 @@ export default function ImageZoomModal({
               transform: `rotate(${rotation}deg)`,
               maxWidth: 'none', 
               maxHeight: 'none', 
+              // Ensuring the image itself is the source of dimensions for scrolling
+              display: 'block', // Or 'inline-block' if preferred, 'block' is fine
             }}
-            sizes="200vw" 
+            sizes="200vw" // This prop might be less relevant when explicit width/height are used
             priority 
             data-ai-hint="detailed zoomed image"
           />
