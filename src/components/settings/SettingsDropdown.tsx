@@ -11,19 +11,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Settings, Download, Upload, Trash2, BarChartBig, Loader2 } from 'lucide-react';
+import { Settings, Download, Upload, Trash2, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { exportData, importData, deleteAllData } from '@/lib/db';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
-import StatisticsModal from '@/components/stats/StatisticsModal';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Input } from '../ui/input';
 
 
 export default function SettingsDropdown() {
   const { toast } = useToast();
-  const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
@@ -168,16 +166,12 @@ export default function SettingsDropdown() {
              <label
                 htmlFor="import-zip"
                 className="flex items-center cursor-pointer w-full"
-                onClick={handleLabelClick} // Added onClick here
+                onClick={handleLabelClick} 
               >
                 {isImporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
                 Import Data
               <Input id="import-zip" type="file" accept=".zip" className="hidden" onChange={handleImport} />
             </label>
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setIsStatsModalOpen(true)}>
-            <BarChartBig className="mr-2 h-4 w-4" />
-            View Stats
           </DropdownMenuItem>
           <DropdownMenuSeparator />
             <AlertDialog>
@@ -204,8 +198,6 @@ export default function SettingsDropdown() {
             </AlertDialog>
         </DropdownMenuContent>
       </DropdownMenu>
-      {isStatsModalOpen && <StatisticsModal isOpen={isStatsModalOpen} onClose={() => setIsStatsModalOpen(false)} />}
     </>
   );
 }
-

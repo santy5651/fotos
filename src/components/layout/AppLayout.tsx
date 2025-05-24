@@ -1,6 +1,7 @@
+
 "use client";
 
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   SidebarProvider,
   Sidebar,
@@ -9,19 +10,15 @@ import {
   SidebarFooter,
   SidebarInset,
   SidebarTrigger,
-  SidebarMenu,
-  SidebarMenuItem,
-  SidebarMenuButton,
-  SidebarGroup,
-  SidebarGroupLabel
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { FileImage, Settings, Search as SearchIcon, UploadCloud } from "lucide-react";
+import { FileImage, Settings, BarChartBig } from "lucide-react";
 import CollectionsPanel from '@/components/collections/CollectionsPanel';
 import ImageUpload from '@/components/image/ImageUpload';
 import SearchBar from '@/components/search/SearchBar';
 import SettingsDropdown from '@/components/settings/SettingsDropdown';
+import StatisticsModal from '@/components/stats/StatisticsModal';
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -31,6 +28,8 @@ interface AppLayoutProps {
 }
 
 export default function AppLayout({ children, onSearch, onCollectionSelect, onUploadComplete }: AppLayoutProps) {
+  const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
+
   return (
     <SidebarProvider defaultOpen={true}>
       <Sidebar variant="sidebar" collapsible="icon">
@@ -55,12 +54,17 @@ export default function AppLayout({ children, onSearch, onCollectionSelect, onUp
             <SearchBar onSearch={onSearch} />
           </div>
           <ImageUpload onUploadComplete={onUploadComplete} />
+          <Button variant="outline" size="icon" onClick={() => setIsStatsModalOpen(true)}>
+            <BarChartBig className="h-5 w-5" />
+            <span className="sr-only">View Statistics</span>
+          </Button>
           <SettingsDropdown />
         </header>
         <main className="flex-1 overflow-auto p-6">
           {children}
         </main>
       </SidebarInset>
+      {isStatsModalOpen && <StatisticsModal isOpen={isStatsModalOpen} onClose={() => setIsStatsModalOpen(false)} />}
     </SidebarProvider>
   );
 }
