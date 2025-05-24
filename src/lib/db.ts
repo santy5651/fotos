@@ -17,20 +17,7 @@ export class PicStackDexie extends Dexie {
       images: '++id, name, *tags, createdAt, isFavorite, *collectionIds',
       collections: '++id, name, parentId, createdAt',
     }).upgrade(tx => {
-      // Example upgrade path if schema changed. For new fields, Dexie handles it if they are optional or have defaults.
-      // If a field was mandatory and added, an upgrade function would be needed.
-      // For mimeType on images, if it's newly added and mandatory, we might need to update existing records.
-      // However, since 'file' object would contain mimeType, it's likely derived on add.
-      // If 'syncStatus' was added, it would need a default.
-      // For this version bump from theoretical v1 to v2, if 'mimeType' was added to 'images' index:
-      // tx.table('images').toCollection().modify(image => {
-      //   if (!image.mimeType && image.file) {
-      //     image.mimeType = image.file.type;
-      //   }
-      //   if (!image.syncStatus) {
-      //      image.syncStatus = 'local';
-      //   }
-      // });
+      // Example upgrade path, not strictly needed if new fields are optional
     });
   }
 }
@@ -41,14 +28,12 @@ export const db = new PicStackDexie();
 export const addImage = async (image: Omit<ImageMetadata, 'id' | 'createdAt' | 'syncStatus'> & { createdAt?: Date, syncStatus?: ImageMetadata['syncStatus'] }): Promise<number> => {
   const newImage: ImageMetadata = {
     ...image,
-    id: undefined, // Ensure id is not set for add
+    id: undefined, 
     createdAt: image.createdAt || new Date(),
     syncStatus: image.syncStatus || 'local',
     collectionIds: image.collectionIds || [],
-    file: image.file, // Ensure file is passed
+    file: image.file, 
   };
-  // Dexie's add operation will handle the 'file' field correctly.
-  // The 'file' property is part of the ImageMetadata interface and should be handled by Dexie.
   return db.images.add(newImage as ImageMetadata);
 };
 
@@ -90,7 +75,7 @@ export const deleteImage = async (id: number): Promise<void> => {
 export const addCollection = async (collection: Omit<Collection, 'id' | 'createdAt'> & { createdAt?: Date }): Promise<number> => {
   const newCollection: Collection = {
     ...collection,
-    id: undefined, // Ensure id is not set for add
+    id: undefined, 
     createdAt: collection.createdAt || new Date(),
   };
   return db.collections.add(newCollection);
@@ -100,21 +85,19 @@ export const getCollections = async (): Promise<Collection[]> => {
   return db.collections.orderBy('name').toArray();
 };
 
-// Helper to build collection hierarchy
 export const getHierarchicalCollections = async (): Promise<Collection[]> => {
   const allCollections = await db.collections.orderBy('name').toArray();
   const collectionsMap = new Map<number, Collection>();
   const rootCollections: Collection[] = [];
 
   allCollections.forEach(collection => {
-    collection.children = []; // Initialize children array
+    collection.children = []; 
     collectionsMap.set(collection.id!, collection);
   });
 
   allCollections.forEach(collection => {
     if (collection.parentId && collectionsMap.has(collection.parentId)) {
       const parentCollection = collectionsMap.get(collection.parentId)!;
-      // Ensure children array is initialized on parent
       if (!parentCollection.children) {
         parentCollection.children = [];
       }
@@ -136,7 +119,6 @@ export const updateCollection = async (id: number, changes: Partial<Collection>)
 };
 
 export const deleteCollection = async (id: number): Promise<void> => {
-  // Disassociate images from this collection
   const imagesToUpdate = await db.images.where('collectionIds').equals(id).toArray();
   for (const img of imagesToUpdate) {
     if (img.id !== undefined) {
@@ -144,7 +126,6 @@ export const deleteCollection = async (id: number): Promise<void> => {
     }
   }
 
-  // Re-parent sub-collections to null (make them root)
   const subCollections = await db.collections.where('parentId').equals(id).toArray();
   if (subCollections.length > 0) {
     for (const subColl of subCollections) {
@@ -156,22 +137,7 @@ export const deleteCollection = async (id: number): Promise<void> => {
   return db.collections.delete(id);
 };
 
-// Add/Remove image from collection
-export const addImageToCollection = async (imageId: number, collectionId: number): Promise<void> => {
-  const image = await db.images.get(imageId);
-  if (image) {
-    if (!image.collectionIds.includes(collectionId)) {
-      await db.images.update(imageId, { collectionIds: [...image.collectionIds, collectionId] });
-    }
-  }
-};
-
-export const removeImageFromCollection = async (imageId: number, collectionId: number): Promise<void> => {
-  const image = await db.images.get(imageId);
-  if (image) {
-    await db.images.update(imageId, { collectionIds: image.collectionIds.filter(id => id !== collectionId) });
-  }
-};
+// Add/Remove image from collection (already present, good)
 
 // Data Management
 export const exportData = async (): Promise<{ metadataJson: string, imageFiles: { name: string, blob: Blob }[] }> => {
@@ -179,19 +145,23 @@ export const exportData = async (): Promise<{ metadataJson: string, imageFiles: 
   const collections = await db.collections.toArray();
 
   const metadata = {
-    version: 1, // Schema version for the export format
-    collections: collections.map(c => ({...c, children: undefined, imageCount: undefined})), // Strip transient properties
+    version: 1, 
+    collections: collections.map(c => {
+      const { children, imageCount, ...rest } = c; // Strip transient properties
+      return rest;
+    }),
     images: images.map(img => {
-      const { file, ...rest } = img; 
+      // Strip transient properties like file, dataUri, and transform for metadata
+      const { file, dataUri, transform, ...rest } = img; 
       return { ...rest, originalName: img.name, fileNameInZip: `img_${img.id}_${img.name}` };
     }),
   };
   
   const imageFiles = images
-    .filter(img => img.file instanceof Blob) // Ensure img.file is a Blob/File
+    .filter(img => img.file instanceof Blob)
     .map(img => ({
-      name: `img_${img.id}_${img.name}`,
-      blob: img.file as Blob // Cast as Blob after filtering
+      name: `img_${img.id}_${img.name}`, // Consistent naming with metadata
+      blob: img.file as Blob 
   }));
 
   return { metadataJson: JSON.stringify(metadata, null, 2), imageFiles };
@@ -202,82 +172,107 @@ export const importData = async (metadataJson: string, files: File[]): Promise<s
   const warnings: string[] = [];
   const parsedData = JSON.parse(metadataJson);
   
-  const importedCollectionsRaw: Array<Collection & {id: number}> = // Assume id is present from export
+  const importedCollectionsRaw: Array<Collection & {id: number}> = 
     (parsedData.collections || []).map((c: any) => ({
     ...c,
-    createdAt: new Date(c.createdAt),
+    createdAt: new Date(c.createdAt), // Convert string date to Date object
   }));
 
-  const importedImagesMetadata: (Omit<ImageMetadata, 'file' | 'id'> & { id?: number, originalName?: string, fileNameInZip?: string, collectionIds: number[] })[] = 
-    (parsedData.images || []).map((img: any) => ({
-    ...img, // Includes original ID as 'id'
-    createdAt: new Date(img.createdAt),
+  // Metadata for images from the JSON file
+  const importedImagesJsonData = (parsedData.images || []).map((img: any) => ({
+    ...img,
+    createdAt: new Date(img.createdAt), // Convert string date to Date object
   }));
 
   const oldToNewCollectionIdMap = new Map<number, number>();
-  const collectionParentImportData: Array<{ newId: number; oldParentId: number | null }> = [];
+  const collectionParentImportData: Array<{ newDbId: number; oldParentId: number | null }> = [];
   const filesMap = new Map(files.map(f => [f.name, f]));
 
   await db.transaction('rw', db.collections, db.images, async () => {
     // COLLECTIONS - Pass 1: Insert all collections, map old IDs to new IDs.
     for (const collToImport of importedCollectionsRaw) {
       const oldCollectionId = collToImport.id; // Original ID from JSON
-      const { id, children, imageCount, parentId: originalParentId, ...collectionData } = collToImport;
+      const { name, createdAt: collCreatedAt, parentId: originalParentId } = collToImport; // Explicitly pick fields
+
+      if (!(collCreatedAt instanceof Date)) {
+        warnings.push(`Collection "${name}" has invalid createdAt format. Skipping.`);
+        continue;
+      }
 
       try {
-        // Add collection with parentId temporarily as null. It will be updated in Pass 2.
-        const newGeneratedId = await db.collections.add({
-          ...collectionData, // name, createdAt
-          parentId: null, // Set to null initially
-        } as Collection);
+        const newCollectionEntry: Omit<Collection, 'id' | 'children' | 'imageCount'> = {
+          name: name,
+          createdAt: collCreatedAt,
+          parentId: null, // Set to null initially for Pass 1
+        };
+        const newGeneratedDbId = await db.collections.add(newCollectionEntry);
         
-        oldToNewCollectionIdMap.set(oldCollectionId, newGeneratedId);
-        collectionParentImportData.push({ newId: newGeneratedId, oldParentId: originalParentId ?? null });
+        oldToNewCollectionIdMap.set(oldCollectionId, newGeneratedDbId);
+        collectionParentImportData.push({ newDbId: newGeneratedDbId, oldParentId: originalParentId ?? null });
       } catch (e) {
-        warnings.push(`Failed to import collection "${collectionData.name}" (Pass 1): ${(e as Error).message}`);
+        warnings.push(`Failed to import collection "${name}" (Pass 1): ${(e as Error).message}`);
       }
     }
 
     // COLLECTIONS - Pass 2: Update parentIds using the new ID map.
-    for (const { newId: newCollectionId, oldParentId } of collectionParentImportData) {
-      if (oldParentId !== null) { // If it had a parent
-        const newParentCollectionId = oldToNewCollectionIdMap.get(oldParentId);
-        if (newParentCollectionId !== undefined) {
+    for (const { newDbId, oldParentId } of collectionParentImportData) {
+      if (oldParentId !== null) { 
+        const newParentDbId = oldToNewCollectionIdMap.get(oldParentId);
+        if (newParentDbId !== undefined) {
           try {
-            await db.collections.update(newCollectionId, { parentId: newParentCollectionId });
+            await db.collections.update(newDbId, { parentId: newParentDbId });
           } catch (e) {
-            warnings.push(`Failed to set parent for collection (New ID: ${newCollectionId}, Original Parent ID: ${oldParentId}): ${(e as Error).message}`);
+            warnings.push(`Failed to set parent for collection (New DB ID: ${newDbId}, Original Parent ID: ${oldParentId}): ${(e as Error).message}`);
           }
         } else {
-          warnings.push(`Parent collection (Original ID: ${oldParentId}) for collection (New ID: ${newCollectionId}) not found during mapping. It will remain a root collection.`);
+          warnings.push(`Parent collection (Original ID: ${oldParentId}) for collection (New DB ID: ${newDbId}) not found during mapping. It will remain a root collection.`);
         }
       }
     }
     
     // IMAGES - Import images and link to newly mapped collection IDs
-    for (const imgMeta of importedImagesMetadata) {
-      const { id: oldImgId, file, fileNameInZip, originalName, collectionIds: oldCollectionIdsFromImg, ...restMeta } = imgMeta;
+    for (const imgJson of importedImagesJsonData) {
+      const { 
+        id: oldImgId, // This is the original ID from the JSON file
+        fileNameInZip, 
+        originalName, 
+        collectionIds: oldCollectionIdsFromImg,
+        // Actual metadata fields:
+        name, 
+        tags,
+        width,
+        height,
+        isFavorite,
+        isProtected,
+        createdAt, // This is already a Date object
+        mimeType, // MimeType from JSON, prefer file.type
+        syncStatus,
+        // Note: 'file', 'dataUri', 'transform' are not in imgJson if exportData stripped them
+      } = imgJson;
       
       const imageFile = filesMap.get(fileNameInZip!) || filesMap.get(originalName!);
 
       if (imageFile) {
         const newImageCollectionIds = (oldCollectionIdsFromImg || [])
           .map(oldCollId => oldToNewCollectionIdMap.get(oldCollId))
-          .filter(newCollId => newCollId !== undefined) as number[];
+          .filter((newCollId): newCollId is number => newCollId !== undefined);
 
-        const imageToAdd: ImageMetadata = {
-          ...(restMeta as Omit<ImageMetadata, 'id' | 'file' | 'collectionIds' | 'createdAt' | 'syncStatus'>),
-          name: originalName || imageFile.name,
+        const imageToAdd: Omit<ImageMetadata, 'id' | 'dataUri' | 'transform'> = {
+          name: originalName || name || imageFile.name, // Prioritize originalName, then name from JSON, then file name
           file: imageFile,
-          mimeType: imageFile.type,
+          tags: tags || [],
+          width: width,
+          height: height,
+          isFavorite: isFavorite || false,
+          isProtected: isProtected || false,
+          createdAt: createdAt, // Already a Date object
+          mimeType: imageFile.type, // Prefer actual file's mimeType
+          syncStatus: syncStatus || 'local',
           collectionIds: newImageCollectionIds,
-          createdAt: new Date(restMeta.createdAt), // Already a Date object from above
-          syncStatus: 'local',
-          // id will be auto-generated
         };
         
         try {
-          await db.images.add(imageToAdd);
+          await db.images.add(imageToAdd as ImageMetadata); // Cast is fine, 'id' is auto-generated
         } catch (e) {
           warnings.push(`Failed to import image "${imageToAdd.name}": ${(e as Error).message}`);
         }
