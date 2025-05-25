@@ -28,7 +28,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger, // Added AlertDialogTrigger
+  AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { SidebarMenu, SidebarMenuItem as AliasedSidebarMenuItem, SidebarMenuButton, SidebarGroup, SidebarGroupLabel, SidebarMenuSub } from '@/components/ui/sidebar';
@@ -83,29 +83,29 @@ function CollectionItemView({
       return;
     }
     if (newName.length > 50) {
-        toast({ variant: "destructive", title: "Error", description: "Collection name cannot exceed 50 characters." });
+        toast({ variant: "destructive", title: "Error", description: "El nombre de la colección no puede exceder los 50 caracteres." });
         return;
     }
     try {
       await db.collections.update(collection.id!, { name: newName });
-      toast({ title: "Collection Renamed", description: `"${collection.name}" is now "${newName}".` });
+      toast({ title: "Colección Renombrada", description: `"${collection.name}" ahora es "${newName}".` });
       onUpdate();
       setIsRenaming(false);
     } catch (error) {
-      toast({ variant: "destructive", title: "Error", description: "Failed to rename collection." });
+      toast({ variant: "destructive", title: "Error", description: "No se pudo renombrar la colección." });
     }
   };
 
   const handleDelete = async () => {
     try {
       await db.collections.delete(collection.id!);
-      toast({ title: "Collection Deleted", description: `"${collection.name}" has been deleted.` });
+      toast({ title: "Colección Eliminada", description: `"${collection.name}" ha sido eliminada.` });
       onUpdate();
       if (selectedCollectionId === collection.id) {
         onSelect(null); // Deselect if current one is deleted
       }
     } catch (error) {
-       toast({ variant: "destructive", title: "Error Deleting Collection", description: (error as Error).message });
+       toast({ variant: "destructive", title: "Error al Eliminar Colección", description: (error as Error).message });
     }
   };
 
@@ -128,7 +128,7 @@ function CollectionItemView({
               size="icon"
               className="h-7 w-7 p-1 mr-0.5 flex-shrink-0 rounded hover:bg-sidebar-accent"
               onClick={(e) => { e.stopPropagation(); onToggleOpen(); }}
-              aria-label={isOpen ? `Collapse ${collection.name}` : `Expand ${collection.name}`}
+              aria-label={isOpen ? `Contraer ${collection.name}` : `Expandir ${collection.name}`}
             >
               {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
             </Button>
@@ -147,38 +147,38 @@ function CollectionItemView({
           </SidebarMenuButton>
 
           <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center flex-shrink-0 ml-1 pr-1">
-             <Button variant="ghost" size="icon" className="h-7 w-7 p-1" onClick={(e) => {e.stopPropagation(); onOpenCreateSubCollectionDialog(collection.id!)}} title={`Add sub-collection to ${collection.name}`}>
+             <Button variant="ghost" size="icon" className="h-7 w-7 p-1" onClick={(e) => {e.stopPropagation(); onOpenCreateSubCollectionDialog(collection.id!)}} title={`Añadir sub-colección a ${collection.name}`}>
               <FolderPlus size={14} />
              </Button>
              <Dialog open={isRenaming} onOpenChange={setIsRenaming}>
               <DialogTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7 p-1" onClick={(e) => e.stopPropagation()} title={`Rename ${collection.name}`}><Edit2 size={14} /></Button>
+                <Button variant="ghost" size="icon" className="h-7 w-7 p-1" onClick={(e) => e.stopPropagation()} title={`Renombrar ${collection.name}`}><Edit2 size={14} /></Button>
               </DialogTrigger>
               <DialogContent>
-                <DialogHeader><DialogTitle>Rename Collection</DialogTitle></DialogHeader>
+                <DialogHeader><DialogTitle>Renombrar Colección</DialogTitle></DialogHeader>
                 <Input 
                     value={newName} 
                     onChange={(e) => setNewName(e.target.value)} 
-                    placeholder="New collection name"
+                    placeholder="Nuevo nombre de colección"
                     maxLength={50} 
                 />
-                <p className="text-xs text-muted-foreground mt-1">Max 50 characters.</p>
+                <p className="text-xs text-muted-foreground mt-1">Máx. 50 caracteres.</p>
                 <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsRenaming(false)}>Cancel</Button>
-                  <Button onClick={handleRename}>Save</Button>
+                  <Button variant="outline" onClick={() => setIsRenaming(false)}>Cancelar</Button>
+                  <Button onClick={handleRename}>Guardar</Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7 p-1 text-destructive hover:text-destructive" onClick={(e) => e.stopPropagation()} title={`Delete ${collection.name}`}><Trash2 size={14} /></Button>
+                <Button variant="ghost" size="icon" className="h-7 w-7 p-1 text-destructive hover:text-destructive" onClick={(e) => e.stopPropagation()} title={`Eliminar ${collection.name}`}><Trash2 size={14} /></Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
-                <AlertDialogHeader><AlertDialogTitle>Delete Collection?</AlertDialogTitle></AlertDialogHeader>
-                <AlertDialogDescription>Are you sure you want to delete "{collection.name}"? This action cannot be undone. If this collection contains images, they will not be deleted but will no longer be in this collection. Sub-collections will become root collections.</AlertDialogDescription>
+                <AlertDialogHeader><AlertDialogTitle>¿Eliminar Colección?</AlertDialogTitle></AlertDialogHeader>
+                <AlertDialogDescription>¿Estás seguro de que quieres eliminar "{collection.name}"? Esta acción no se puede deshacer. Si esta colección contiene imágenes, no se eliminarán, pero ya no estarán en esta colección. Las sub-colecciones se convertirán en colecciones raíz.</AlertDialogDescription>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">Eliminar</AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
@@ -272,16 +272,16 @@ export default function CollectionsPanel({ onCollectionSelect, onToggleReviewDup
 
   const handleAddCollection = async () => {
     if (newCollectionName.trim() === '') {
-        toast({ variant: "destructive", title: "Error", description: "Collection name cannot be empty." });
+        toast({ variant: "destructive", title: "Error", description: "El nombre de la colección no puede estar vacío." });
         return;
     }
     if (newCollectionName.length > 50) {
-        toast({ variant: "destructive", title: "Error", description: "Collection name cannot exceed 50 characters." });
+        toast({ variant: "destructive", title: "Error", description: "El nombre de la colección no puede exceder los 50 caracteres." });
         return;
     }
     try {
       const newCollectionId = await dbAddCollection({ name: newCollectionName, parentId: dialogParentId });
-      toast({ title: "Collection Created", description: `"${newCollectionName}" has been added.` });
+      toast({ title: "Colección Creada", description: `"${newCollectionName}" ha sido añadida.` });
       setNewCollectionName('');
       setDialogParentId(null);
       setIsCreateDialogOpen(false);
@@ -290,7 +290,7 @@ export default function CollectionsPanel({ onCollectionSelect, onToggleReviewDup
         handleToggleOpen(dialogParentId); 
       }
     } catch (error) {
-      toast({ variant: "destructive", title: "Error", description: "Failed to create collection." });
+      toast({ variant: "destructive", title: "Error", description: "No se pudo crear la colección." });
     }
   };
 
@@ -358,13 +358,13 @@ export default function CollectionsPanel({ onCollectionSelect, onToggleReviewDup
 
 
   if (!hierarchicalCollections || !imageCountsResult || !flatCollectionsForSelect) {
-    return <div className="p-4"><Loader2 className="animate-spin" /> Loading collections...</div>;
+    return <div className="p-4"><Loader2 className="animate-spin" /> Cargando colecciones...</div>;
   }
 
   return (
     <SidebarGroup className="px-1 py-2">
       <SidebarGroupLabel className="flex justify-between items-center">
-        <span>Collections</span>
+        <span>Colecciones</span>
         <div className="flex items-center">
             <Tooltip>
                 <TooltipTrigger asChild>
@@ -372,7 +372,7 @@ export default function CollectionsPanel({ onCollectionSelect, onToggleReviewDup
                         <ListCollapse size={16} />
                     </Button>
                 </TooltipTrigger>
-                <TooltipContent><p>Collapse All</p></TooltipContent>
+                <TooltipContent><p>Contraer Todo</p></TooltipContent>
             </Tooltip>
             <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
             <DialogTrigger asChild>
@@ -382,34 +382,34 @@ export default function CollectionsPanel({ onCollectionSelect, onToggleReviewDup
             </DialogTrigger>
             <DialogContent>
                 <DialogHeader>
-                <DialogTitle>Create New Collection</DialogTitle>
-                <DialogDescription>Enter a name and optionally select a parent for your new collection.</DialogDescription>
+                <DialogTitle>Crear Nueva Colección</DialogTitle>
+                <DialogDescription>Ingresa un nombre y opcionalmente selecciona una colección padre para tu nueva colección.</DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
                 <div className="grid grid-cols-4 items-start gap-4">
-                    <Label htmlFor="collection-name" className="text-right pt-2">Name</Label>
+                    <Label htmlFor="collection-name" className="text-right pt-2">Nombre</Label>
                     <div className="col-span-3">
                         <Input
                         id="collection-name"
-                        placeholder="Collection name"
+                        placeholder="Nombre de la colección"
                         value={newCollectionName}
                         onChange={(e) => setNewCollectionName(e.target.value)}
                         maxLength={50}
                         />
-                        <p className="text-xs text-muted-foreground mt-1">Max 50 characters.</p>
+                        <p className="text-xs text-muted-foreground mt-1">Máx. 50 caracteres.</p>
                     </div>
                 </div>
                 <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="parent-collection" className="text-right">Parent</Label>
+                    <Label htmlFor="parent-collection" className="text-right">Padre</Label>
                     <Select
                     value={dialogParentId?.toString() ?? "none"}
                     onValueChange={(value) => setDialogParentId(value === "none" ? null : Number(value))}
                     >
                     <SelectTrigger id="parent-collection" className="col-span-3">
-                        <SelectValue placeholder="Select parent (optional)" />
+                        <SelectValue placeholder="Seleccionar padre (opcional)" />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="none">(No Parent - Root Collection)</SelectItem>
+                        <SelectItem value="none">(Sin Padre - Colección Raíz)</SelectItem>
                         {(function renderSelectOptions(collections: Collection[], level = 0) {
                             let options: JSX.Element[] = [];
                             collections.forEach(collection => {
@@ -433,8 +433,8 @@ export default function CollectionsPanel({ onCollectionSelect, onToggleReviewDup
                 </div>
                 </div>
                 <DialogFooter>
-                <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                <Button onClick={handleAddCollection}>Create</Button>
+                <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
+                <Button onClick={handleAddCollection}>Crear</Button>
                 </DialogFooter>
             </DialogContent>
             </Dialog>
@@ -448,7 +448,7 @@ export default function CollectionsPanel({ onCollectionSelect, onToggleReviewDup
             className={cn(isReviewDuplicatesMode && "bg-destructive/20 text-destructive-foreground hover:bg-destructive/30")}
           >
             <AlertTriangle size={16} className="mr-1 flex-shrink-0" />
-            Review Duplicates
+            Revisar Duplicados
           </SidebarMenuButton>
         </AliasedSidebarMenuItem>
 
@@ -457,7 +457,7 @@ export default function CollectionsPanel({ onCollectionSelect, onToggleReviewDup
             onClick={handleSelectAllImages} 
             isActive={!isReviewDuplicatesMode && selectedCollectionId === null}
           >
-            All Images
+            Todas las Imágenes
           </SidebarMenuButton>
         </AliasedSidebarMenuItem>
         {renderCollectionItems(hierarchicalCollections, 0)}
@@ -465,3 +465,5 @@ export default function CollectionsPanel({ onCollectionSelect, onToggleReviewDup
     </SidebarGroup>
   );
 }
+
+      
