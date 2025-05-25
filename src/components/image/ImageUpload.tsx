@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, type ChangeEvent } from 'react';
@@ -5,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { UploadCloud, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { addImage, blobToDataURL } from '@/lib/db';
+import { addImage, blobToDataURL, checkIfImageExistsByName } from '@/lib/db'; // Ensure checkIfImageExistsByName is imported
 import type { ImageMetadata } from '@/types';
 import { tagImage } from '@/ai/flows/tag-image'; // Ensure this path is correct
 
@@ -27,6 +28,18 @@ export default function ImageUpload({ onUploadComplete }: ImageUploadProps) {
 
     for (const file of Array.from(files)) {
       try {
+        // 0. Check for duplicates by name
+        const isDuplicate = await checkIfImageExistsByName(file.name);
+        if (isDuplicate) {
+          toast({ 
+            variant: "destructive", // Or "default" if you prefer less alarming
+            title: "Duplicate Skipped", 
+            description: `An image named "${file.name}" already exists and was not uploaded.` 
+          });
+          console.warn(`Duplicate file skipped: ${file.name}`);
+          continue; // Skip to the next file
+        }
+
         // 1. Get dimensions
         const dimensions = await getImageDimensions(file);
 
@@ -70,7 +83,7 @@ export default function ImageUpload({ onUploadComplete }: ImageUploadProps) {
     if (uploadedCount > 0) {
       onUploadComplete();
     }
-    toast({ title: "Upload Finished", description: `${uploadedCount}/${totalFiles} images processed.` });
+    toast({ title: "Upload Finished", description: `${uploadedCount}/${totalFiles} images processed. ${totalFiles - uploadedCount} duplicates skipped.` });
     
     // Reset file input
     event.target.value = '';
@@ -83,7 +96,15 @@ export default function ImageUpload({ onUploadComplete }: ImageUploadProps) {
         const img = new Image();
         img.onload = () => resolve({ width: img.width, height: img.height });
         img.onerror = reject;
-        img.src = e.target?.result as string;
+        if (e.target?.result) {
+          img.src = e.target.result as string;
+        } else {
+          reject(new Error("FileReader result was null."));
+        }
+      };
+      reader.onerror = (error) => {
+        console.error("FileReader error:", error);
+        reject(error);
       };
       reader.readAsDataURL(file);
     });
@@ -113,3 +134,4 @@ export default function ImageUpload({ onUploadComplete }: ImageUploadProps) {
     </div>
   );
 }
+
