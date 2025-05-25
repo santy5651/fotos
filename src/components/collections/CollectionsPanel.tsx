@@ -3,7 +3,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, getHierarchicalCollections, addCollection as dbAddCollection, getCollections } from '@/lib/db';
+import { db, getHierarchicalCollections, addCollection as dbAddCollection, getCollections, deleteCollection as dbDeleteCollection, updateCollection as dbUpdateCollection } from '@/lib/db';
 import type { Collection } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -61,146 +61,6 @@ interface CollectionItemProps {
   isShowUnassignedMode: boolean;
   onToggleShowUnassigned: () => void;
 }
-
-function CollectionItemView({
-  collection,
-  level,
-  onSelect,
-  onUpdate,
-  imageCounts,
-  selectedCollectionId,
-  onOpenCreateSubCollectionDialog,
-  isOpen,
-  onToggleOpen,
-  isReviewDuplicatesMode,
-  onToggleReviewDuplicates,
-  isShowUnassignedMode,
-  onToggleShowUnassigned,
-}: CollectionItemProps) {
-  const { toast } = useToast();
-  const [isRenaming, setIsRenaming] = useState(false);
-  const [newName, setNewName] = useState(collection.name);
-
-  const count = imageCounts.get(collection.id!) || 0;
-
-  const handleRename = async () => {
-    if (newName.trim() === "" || newName === collection.name) {
-      setIsRenaming(false);
-      return;
-    }
-    if (newName.length > 50) {
-        toast({ variant: "destructive", title: "Error", description: "El nombre de la colección no puede exceder los 50 caracteres." });
-        return;
-    }
-    try {
-      await db.collections.update(collection.id!, { name: newName });
-      toast({ title: "Colección Renombrada", description: `"${collection.name}" ahora es "${newName}".` });
-      onUpdate();
-      setIsRenaming(false);
-    } catch (error) {
-      toast({ variant: "destructive", title: "Error", description: "No se pudo renombrar la colección." });
-    }
-  };
-
-  const handleDelete = async () => {
-    try {
-      await db.collections.delete(collection.id!);
-      toast({ title: "Colección Eliminada", description: `"${collection.name}" ha sido eliminada.` });
-      onUpdate();
-      if (selectedCollectionId === collection.id) {
-        onSelect(null);
-      }
-    } catch (error) {
-       toast({ variant: "destructive", title: "Error al Eliminar Colección", description: (error as Error).message });
-    }
-  };
-
-  const displayName = (level > 0 ? '-'.repeat(level) + ' ' : '') + collection.name;
-
-  const handleItemSelect = () => {
-    if (isReviewDuplicatesMode) onToggleReviewDuplicates();
-    if (isShowUnassignedMode) onToggleShowUnassigned();
-    onSelect(collection.id!);
-  };
-
-  return (
-    <React.Fragment>
-      <AliasedSidebarMenuItem>
-        <div className="flex flex-col"> {/* Main container for the item's content */}
-          {/* Line 1: Expand/Collapse, Folder, Name, Count */}
-          <div className="flex items-center w-full">
-            {collection.children && collection.children.length > 0 ? (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 p-1 mr-0.5 flex-shrink-0 rounded hover:bg-sidebar-accent"
-                onClick={(e) => { e.stopPropagation(); onToggleOpen(); }}
-                aria-label={isOpen ? `Contraer ${collection.name}` : `Expandir ${collection.name}`}
-              >
-                {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-              </Button>
-            ) : (
-              <span className="w-7 h-7 mr-0.5 flex-shrink-0"></span>
-            )}
-
-            <SidebarMenuButton
-              onClick={handleItemSelect}
-              isActive={!isReviewDuplicatesMode && !isShowUnassignedMode && selectedCollectionId === collection.id}
-              className="flex-grow h-auto py-1 px-1.5 text-left"
-            >
-              <Folder size={16} className="mr-1 flex-shrink-0" />
-              <span className="truncate flex-1" title={collection.name}>{displayName}</span>
-              <span className="text-xs text-sidebar-foreground/70 ml-2 pl-1 flex-shrink-0">{count}</span>
-            </SidebarMenuButton>
-          </div>
-
-          {/* Line 2: Action Icons (always visible) */}
-          <div className="flex items-center mt-1 pl-7">
-             <Button variant="ghost" size="icon" className="h-7 w-7 p-1" onClick={(e) => {e.stopPropagation(); onOpenCreateSubCollectionDialog(collection.id!)}} title={`Añadir sub-colección a ${collection.name}`}>
-              <FolderPlus size={14} />
-             </Button>
-             <Dialog open={isRenaming} onOpenChange={setIsRenaming}>
-              <DialogTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7 p-1" onClick={(e) => e.stopPropagation()} title={`Renombrar ${collection.name}`}><Edit2 size={14} /></Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader><DialogTitle>Renombrar Colección</DialogTitle></DialogHeader>
-                <Input
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    placeholder="Nuevo nombre de colección"
-                    maxLength={50}
-                />
-                <p className="text-xs text-muted-foreground mt-1">Máx. 50 caracteres.</p>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsRenaming(false)}>Cancelar</Button>
-                  <Button onClick={handleRename}>Guardar</Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7 p-1 text-destructive hover:text-destructive" onClick={(e) => e.stopPropagation()} title={`Eliminar ${collection.name}`}><Trash2 size={14} /></Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader><AlertDialogTitle>¿Eliminar Colección?</AlertDialogTitle></AlertDialogHeader>
-                <AlertDialogDescription>¿Estás seguro de que quieres eliminar "{collection.name}"? Esta acción no se puede deshacer. Si esta colección contiene imágenes, no se eliminarán, pero ya no estarán en esta colección. Las sub-colecciones se convertirán en colecciones raíz.</AlertDialogDescription>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">Eliminar</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </div>
-        </div>
-      </AliasedSidebarMenuItem>
-      {collection.children && collection.children.length > 0 && openCollectionIds.has(collection.id!) &&
-        renderCollectionItems(collection.children, level + 1)
-      }
-    </React.Fragment>
-  );
-}
-
 
 export default function CollectionsPanel({
   onCollectionSelect,
@@ -281,6 +141,144 @@ export default function CollectionsPanel({
     [refreshKey],
     new Map<number, number>()
   );
+
+function CollectionItemView({
+  collection,
+  level,
+  onSelect,
+  onUpdate,
+  imageCounts,
+  selectedCollectionId,
+  onOpenCreateSubCollectionDialog,
+  isOpen,
+  onToggleOpen,
+  isReviewDuplicatesMode,
+  onToggleReviewDuplicates,
+  isShowUnassignedMode,
+  onToggleShowUnassigned,
+}: CollectionItemProps) {
+  const { toast } = useToast();
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [newName, setNewName] = useState(collection.name);
+
+  const count = imageCounts.get(collection.id!) || 0;
+
+  const handleRename = async () => {
+    if (newName.trim() === "" || newName === collection.name) {
+      setIsRenaming(false);
+      return;
+    }
+    if (newName.length > 50) {
+        toast({ variant: "destructive", title: "Error", description: "El nombre de la colección no puede exceder los 50 caracteres." });
+        return;
+    }
+    try {
+      await dbUpdateCollection(collection.id!, { name: newName });
+      toast({ title: "Colección Renombrada", description: `"${collection.name}" ahora es "${newName}".` });
+      onUpdate();
+      setIsRenaming(false);
+    } catch (error) {
+      toast({ variant: "destructive", title: "Error", description: "No se pudo renombrar la colección." });
+    }
+  };
+
+  const handleDelete = async () => {
+    try {
+      await dbDeleteCollection(collection.id!);
+      toast({ title: "Colección Eliminada", description: `"${collection.name}" ha sido eliminada.` });
+      onUpdate();
+      if (selectedCollectionId === collection.id) {
+        onSelect(null);
+      }
+    } catch (error) {
+       toast({ variant: "destructive", title: "Error al Eliminar Colección", description: (error as Error).message });
+    }
+  };
+
+  const displayName = (level > 0 ? '- '.repeat(level) : '') + collection.name;
+
+  const handleItemSelect = () => {
+    if (isReviewDuplicatesMode) onToggleReviewDuplicates();
+    if (isShowUnassignedMode) onToggleShowUnassigned();
+    onSelect(collection.id!);
+  };
+
+  return (
+    <React.Fragment>
+      <AliasedSidebarMenuItem>
+        <div className="flex flex-col w-full">
+          <div className="flex items-center w-full">
+            {collection.children && collection.children.length > 0 ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 p-1 mr-0.5 flex-shrink-0 rounded hover:bg-sidebar-accent"
+                onClick={(e) => { e.stopPropagation(); onToggleOpen(); }}
+                aria-label={isOpen ? `Contraer ${collection.name}` : `Expandir ${collection.name}`}
+              >
+                {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              </Button>
+            ) : (
+              <span className="w-7 h-7 mr-0.5 flex-shrink-0"></span>
+            )}
+
+            <SidebarMenuButton
+              onClick={handleItemSelect}
+              isActive={!isReviewDuplicatesMode && !isShowUnassignedMode && selectedCollectionId === collection.id}
+              className="flex-grow h-auto py-1 px-1.5 text-left"
+            >
+              <Folder size={16} className="mr-1 flex-shrink-0" />
+              <span className="truncate flex-1" title={collection.name}>{displayName}</span>
+              <span className="text-xs text-sidebar-foreground/70 ml-2 pl-1 flex-shrink-0">{count}</span>
+            </SidebarMenuButton>
+          </div>
+
+          <div className="flex items-center mt-1 pl-7"> {/* pl-7 to align with text after icon and expander */}
+             <Button variant="ghost" size="icon" className="h-7 w-7 p-1" onClick={(e) => {e.stopPropagation(); onOpenCreateSubCollectionDialog(collection.id!)}} title={`Añadir sub-colección a ${collection.name}`}>
+              <FolderPlus size={14} />
+             </Button>
+             <Dialog open={isRenaming} onOpenChange={setIsRenaming}>
+              <DialogTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7 p-1" onClick={(e) => e.stopPropagation()} title={`Renombrar ${collection.name}`}><Edit2 size={14} /></Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader><DialogTitle>Renombrar Colección</DialogTitle></DialogHeader>
+                <Input
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder="Nuevo nombre de colección"
+                    maxLength={50}
+                />
+                <p className="text-xs text-muted-foreground mt-1">Máx. 50 caracteres.</p>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsRenaming(false)}>Cancelar</Button>
+                  <Button onClick={handleRename}>Guardar</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7 p-1 text-destructive hover:text-destructive" onClick={(e) => e.stopPropagation()} title={`Eliminar ${collection.name}`}><Trash2 size={14} /></Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader><AlertDialogTitle>¿Eliminar Colección?</AlertDialogTitle></AlertDialogHeader>
+                <AlertDialogDescription>¿Estás seguro de que quieres eliminar "{collection.name}"? Esta acción no se puede deshacer. Si esta colección contiene imágenes, no se eliminarán, pero ya no estarán en esta colección. Las sub-colecciones se convertirán en colecciones raíz.</AlertDialogDescription>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">Eliminar</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        </div>
+      </AliasedSidebarMenuItem>
+      {collection.children && collection.children.length > 0 && isOpen &&
+        renderCollectionItems(collection.children, level + 1)
+      }
+    </React.Fragment>
+  );
+}
+
 
   const openCreateCollectionDialog = (parentId: number | null) => {
     setDialogParentId(parentId);
@@ -369,9 +367,6 @@ export default function CollectionsPanel({
           isShowUnassignedMode={isShowUnassignedMode}
           onToggleShowUnassigned={onToggleShowUnassigned}
         />
-        {collection.children && collection.children.length > 0 && openCollectionIds.has(collection.id!) &&
-          renderCollectionItems(collection.children, level + 1)
-        }
       </React.Fragment>
     ));
   };
@@ -433,7 +428,7 @@ export default function CollectionsPanel({
                         {(function renderSelectOptions(collections: Collection[], level = 0) {
                             let options: JSX.Element[] = [];
                             collections.forEach(collection => {
-                                const prefix = level > 0 ? '-'.repeat(level) + ' ' : '';
+                                const prefix = level > 0 ? '- '.repeat(level) : '';
                                 options.push(
                                     <SelectItem
                                         key={collection.id}
@@ -495,3 +490,5 @@ export default function CollectionsPanel({
     </SidebarGroup>
   );
 }
+
+    
