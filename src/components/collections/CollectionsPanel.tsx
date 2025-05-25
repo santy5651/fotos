@@ -3,7 +3,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, getHierarchicalCollections, addCollection as dbAddCollection, getCollections, deleteCollection as dbDeleteCollection, updateCollection as dbUpdateCollection } from '@/lib/db';
+import { db, getHierarchicalCollections, addCollection as dbAddCollection, getCollections, deleteCollection as dbDeleteCollection, updateCollection as dbUpdateCollection, getUnassignedImageCount } from '@/lib/db';
 import type { Collection } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -36,6 +36,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
 
 
 interface CollectionsPanelProps {
@@ -81,6 +82,11 @@ export default function CollectionsPanel({
   const hierarchicalCollections = useLiveQuery(
     async () => getHierarchicalCollections(),
     [refreshKey], [] as Collection[]
+  );
+
+  const unassignedImageCount = useLiveQuery(
+    async () => getUnassignedImageCount(),
+    [refreshKey], 0
   );
 
   useEffect(() => {
@@ -372,7 +378,7 @@ function CollectionItemView({
   };
 
 
-  if (!hierarchicalCollections || !imageCountsResult || !flatCollectionsForSelect) {
+  if (!hierarchicalCollections || !imageCountsResult || !flatCollectionsForSelect || unassignedImageCount === undefined) {
     return <div className="p-4"><Loader2 className="animate-spin" /> Cargando colecciones...</div>;
   }
 
@@ -471,9 +477,17 @@ function CollectionItemView({
           <SidebarMenuButton
             onClick={handleSelectShowUnassigned}
             isActive={isShowUnassignedMode}
+            className="flex items-center justify-between w-full"
           >
-            <Unlink size={16} className="mr-1 flex-shrink-0" />
-            No asignadas
+            <div className="flex items-center">
+              <Unlink size={16} className="mr-1 flex-shrink-0" />
+              No asignadas
+            </div>
+            {unassignedImageCount > 0 && (
+              <Badge variant="secondary" className="ml-2 text-xs px-1.5 py-0.5">
+                {unassignedImageCount}
+              </Badge>
+            )}
           </SidebarMenuButton>
         </AliasedSidebarMenuItem>
 
