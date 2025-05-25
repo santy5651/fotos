@@ -7,7 +7,7 @@ import { db, getHierarchicalCollections, addCollection as dbAddCollection, getCo
 import type { Collection } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, Folder, ChevronDown, ChevronRight, Edit2, Trash2, Loader2, FolderPlus, ListCollapse } from 'lucide-react';
+import { Plus, Folder, ChevronDown, ChevronRight, Edit2, Trash2, Loader2, FolderPlus, ListCollapse, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import {
   Dialog,
@@ -28,17 +28,19 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger
-} from '@/components/ui/alert-dialog';
+} from '@/components/ui/alert-dialog'; // Removed AlertDialogTrigger as it's used with asChild
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { SidebarMenu, SidebarMenuItem as AliasedSidebarMenuItem, SidebarMenuButton, SidebarGroup, SidebarGroupLabel, SidebarMenuSub } from '@/components/ui/sidebar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
 
 
 interface CollectionsPanelProps {
   onCollectionSelect: (collectionId: number | null) => void;
+  onToggleReviewDuplicates: () => void;
+  isReviewDuplicatesMode: boolean;
 }
 
 interface CollectionItemProps {
@@ -51,6 +53,8 @@ interface CollectionItemProps {
   onOpenCreateSubCollectionDialog: (parentId: number) => void;
   isOpen: boolean;
   onToggleOpen: () => void;
+  isReviewDuplicatesMode: boolean; // Added
+  onToggleReviewDuplicates: () => void; // Added
 }
 
 function CollectionItemView({
@@ -62,7 +66,9 @@ function CollectionItemView({
   selectedCollectionId,
   onOpenCreateSubCollectionDialog,
   isOpen,
-  onToggleOpen
+  onToggleOpen,
+  isReviewDuplicatesMode, // Destructure
+  onToggleReviewDuplicates, // Destructure
 }: CollectionItemProps) {
   const { toast } = useToast();
   const [isRenaming, setIsRenaming] = useState(false);
@@ -95,7 +101,7 @@ function CollectionItemView({
       toast({ title: "Collection Deleted", description: `"${collection.name}" has been deleted.` });
       onUpdate();
       if (selectedCollectionId === collection.id) {
-        onSelect(null);
+        onSelect(null); // Deselect if current one is deleted
       }
     } catch (error) {
        toast({ variant: "destructive", title: "Error Deleting Collection", description: (error as Error).message });
@@ -103,6 +109,13 @@ function CollectionItemView({
   };
 
   const displayName = (level > 0 ? '-'.repeat(level) + ' ' : '') + collection.name;
+
+  const handleItemSelect = () => {
+    if (isReviewDuplicatesMode) {
+      onToggleReviewDuplicates(); // Turn off review mode if a normal collection is selected
+    }
+    onSelect(collection.id!);
+  };
 
   return (
     <React.Fragment>
@@ -123,8 +136,8 @@ function CollectionItemView({
           )}
 
           <SidebarMenuButton
-            onClick={() => onSelect(collection.id!)}
-            isActive={selectedCollectionId === collection.id}
+            onClick={handleItemSelect}
+            isActive={!isReviewDuplicatesMode && selectedCollectionId === collection.id}
             className="flex-grow h-auto py-1 px-1.5 text-left"
           >
             <Folder size={16} className="mr-1 flex-shrink-0" />
@@ -176,13 +189,13 @@ function CollectionItemView({
 }
 
 
-export default function CollectionsPanel({ onCollectionSelect }: CollectionsPanelProps) {
+export default function CollectionsPanel({ onCollectionSelect, onToggleReviewDuplicates, isReviewDuplicatesMode }: CollectionsPanelProps) {
   const { toast } = useToast();
   const [newCollectionName, setNewCollectionName] = useState('');
   const [dialogParentId, setDialogParentId] = useState<number | null>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [selectedCollectionId, setSelectedCollectionId] = useState<number | null>(null);
+  const [selectedCollectionId, setSelectedCollectionId] = useState<number | null>(null); // Represents the actual selected collection ID
   const [openCollectionIds, setOpenCollectionIds] = useState<Set<number>>(new Set());
   const [initialOpenStateApplied, setInitialOpenStateApplied] = useState(false);
 
@@ -208,7 +221,6 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
         setOpenCollectionIds(defaultOpen);
         setInitialOpenStateApplied(true); 
     } else if (hierarchicalCollections && hierarchicalCollections.length === 0 && !initialOpenStateApplied) {
-        // Ensure openCollectionIds is empty if no collections and initial state not yet applied
         setOpenCollectionIds(new Set());
         setInitialOpenStateApplied(true);
     }
@@ -233,7 +245,7 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
         const countImagesDirectlyInCollection = (collectionId: number): number => {
             let count = 0;
             allImages.forEach(image => {
-                if (image.collectionIds && image.collectionIds.includes(collectionId)) {
+                if (!image.isPotentialDuplicate && image.collectionIds && image.collectionIds.includes(collectionId)) {
                     count++;
                 }
             });
@@ -273,27 +285,35 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
       setDialogParentId(null);
       setIsCreateDialogOpen(false);
       setRefreshKey(prev => prev + 1);
-      // If a new collection with children potential is added, it should be open by default
-      // For simplicity, we'll let the main useEffect handle new collections based on structure
-      // Or, explicitly open its parent if it has one
       if (dialogParentId !== null && !openCollectionIds.has(dialogParentId)) {
-        handleToggleOpen(dialogParentId); // Open parent to show new child
+        handleToggleOpen(dialogParentId); 
       }
-      // New collections don't have children yet, so no need to add them to openCollectionIds
     } catch (error) {
       toast({ variant: "destructive", title: "Error", description: "Failed to create collection." });
     }
   };
 
-  const handleSelectCollection = (collectionId: number | null) => {
-    setSelectedCollectionId(collectionId);
-    onCollectionSelect(collectionId);
+  const handleSelectCollectionInternal = (collectionId: number | null) => {
+    setSelectedCollectionId(collectionId); // Keep track of the actual collection ID
+    onCollectionSelect(collectionId); // Notify parent (HomePage)
   }
+  
+  const handleSelectAllImages = () => {
+    if (isReviewDuplicatesMode) {
+      onToggleReviewDuplicates(); // Turn off review mode
+    }
+    handleSelectCollectionInternal(null);
+  };
+
+  const handleSelectReviewDuplicates = () => {
+    if (!isReviewDuplicatesMode) {
+      onToggleReviewDuplicates(); // Turn on review mode
+    }
+    // onCollectionSelect(null) is called by onToggleReviewDuplicates when turning on
+  };
   
   const doRefresh = useCallback(() => {
     setRefreshKey(prev => prev + 1);
-    // Potentially reset initialOpenStateApplied to false if collections might drastically change
-    // For now, keep it true to preserve user toggles across simple refreshes.
   }, []);
 
   const handleToggleOpen = (collectionId: number) => {
@@ -318,13 +338,15 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
         <CollectionItemView
           collection={collection}
           level={level}
-          onSelect={handleSelectCollection}
+          onSelect={handleSelectCollectionInternal} // Use internal handler
           onUpdate={doRefresh}
           imageCounts={imageCountsResult}
           selectedCollectionId={selectedCollectionId}
           onOpenCreateSubCollectionDialog={openCreateCollectionDialog}
           isOpen={openCollectionIds.has(collection.id!)}
           onToggleOpen={() => handleToggleOpen(collection.id!)}
+          isReviewDuplicatesMode={isReviewDuplicatesMode}
+          onToggleReviewDuplicates={onToggleReviewDuplicates}
         />
         {collection.children && collection.children.length > 0 && openCollectionIds.has(collection.id!) &&
           renderCollectionItems(collection.children, level + 1)
@@ -419,7 +441,21 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
       </SidebarGroupLabel>
       <SidebarMenu>
         <AliasedSidebarMenuItem>
-          <SidebarMenuButton onClick={() => handleSelectCollection(null)} isActive={selectedCollectionId === null}>
+          <SidebarMenuButton 
+            onClick={handleSelectReviewDuplicates} 
+            isActive={isReviewDuplicatesMode}
+            className={cn(isReviewDuplicatesMode && "bg-destructive/20 text-destructive-foreground hover:bg-destructive/30")}
+          >
+            <AlertTriangle size={16} className="mr-1 flex-shrink-0" />
+            Review Duplicates
+          </SidebarMenuButton>
+        </AliasedSidebarMenuItem>
+
+        <AliasedSidebarMenuItem>
+          <SidebarMenuButton 
+            onClick={handleSelectAllImages} 
+            isActive={!isReviewDuplicatesMode && selectedCollectionId === null}
+          >
             All Images
           </SidebarMenuButton>
         </AliasedSidebarMenuItem>
@@ -428,7 +464,3 @@ export default function CollectionsPanel({ onCollectionSelect }: CollectionsPane
     </SidebarGroup>
   );
 }
-
-    
-
-      

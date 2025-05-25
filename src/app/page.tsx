@@ -34,12 +34,14 @@ export default function HomePage() {
 
   const handleSearch = useCallback((term: string) => {
     setSearchTerm(term);
-    if (reviewDuplicatesMode && term) setReviewDuplicatesMode(false); // Exit review mode if searching
-  }, [reviewDuplicatesMode]);
+    // No longer need to exit review mode if searching, as review mode is now a "special collection"
+  }, []);
 
   const handleCollectionSelect = useCallback((collectionId: number | null) => {
     setCurrentCollectionId(collectionId);
-    if (reviewDuplicatesMode && collectionId !== null) setReviewDuplicatesMode(false); // Exit review mode if selecting collection
+    if (reviewDuplicatesMode && collectionId !== null) { // If a real collection is selected while in review mode
+      setReviewDuplicatesMode(false); // Exit review mode
+    }
   }, [reviewDuplicatesMode]);
 
   const handleUploadComplete = useCallback(() => {
@@ -58,6 +60,7 @@ export default function HomePage() {
         setCurrentCollectionId(null);
         setSearchTerm('');
       }
+      // If exiting review mode, currentCollectionId might be null (meaning "All Images") or set by handleCollectionSelect
       return newMode;
     });
   }, []);
@@ -75,8 +78,8 @@ export default function HomePage() {
       onSearch={handleSearch} 
       onCollectionSelect={handleCollectionSelect}
       onUploadComplete={handleUploadComplete}
-      onToggleReviewDuplicates={toggleReviewDuplicatesMode}
-      isReviewDuplicatesMode={reviewDuplicatesMode}
+      onToggleReviewDuplicates={toggleReviewDuplicatesMode} // Pass this down
+      isReviewDuplicatesMode={reviewDuplicatesMode} // Pass this down
     >
       <ImageGrid 
         images={images} 
@@ -86,4 +89,3 @@ export default function HomePage() {
     </AppLayout>
   );
 }
-
