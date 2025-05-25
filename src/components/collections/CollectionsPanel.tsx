@@ -28,7 +28,8 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog'; // Removed AlertDialogTrigger as it's used with asChild
+  AlertDialogTrigger, // Added AlertDialogTrigger
+} from '@/components/ui/alert-dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { SidebarMenu, SidebarMenuItem as AliasedSidebarMenuItem, SidebarMenuButton, SidebarGroup, SidebarGroupLabel, SidebarMenuSub } from '@/components/ui/sidebar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -53,8 +54,8 @@ interface CollectionItemProps {
   onOpenCreateSubCollectionDialog: (parentId: number) => void;
   isOpen: boolean;
   onToggleOpen: () => void;
-  isReviewDuplicatesMode: boolean; // Added
-  onToggleReviewDuplicates: () => void; // Added
+  isReviewDuplicatesMode: boolean;
+  onToggleReviewDuplicates: () => void;
 }
 
 function CollectionItemView({
@@ -67,8 +68,8 @@ function CollectionItemView({
   onOpenCreateSubCollectionDialog,
   isOpen,
   onToggleOpen,
-  isReviewDuplicatesMode, // Destructure
-  onToggleReviewDuplicates, // Destructure
+  isReviewDuplicatesMode,
+  onToggleReviewDuplicates,
 }: CollectionItemProps) {
   const { toast } = useToast();
   const [isRenaming, setIsRenaming] = useState(false);
