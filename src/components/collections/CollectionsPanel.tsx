@@ -7,7 +7,7 @@ import { db, getHierarchicalCollections, addCollection as dbAddCollection, getCo
 import type { Collection } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, Folder, ChevronDown, ChevronRight, Edit2, Trash2, Loader2, FolderPlus, ListCollapse, AlertTriangle, Unlink } from 'lucide-react'; // Added Unlink
+import { Plus, Folder, ChevronDown, ChevronRight, Edit2, Trash2, Loader2, FolderPlus, ListCollapse, AlertTriangle, Unlink } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import {
   Dialog,
@@ -42,15 +42,15 @@ interface CollectionsPanelProps {
   onCollectionSelect: (collectionId: number | null) => void;
   onToggleReviewDuplicates: () => void;
   isReviewDuplicatesMode: boolean;
-  onToggleShowUnassigned: () => void; // New prop
-  isShowUnassignedMode: boolean; // New prop
+  onToggleShowUnassigned: () => void;
+  isShowUnassignedMode: boolean;
 }
 
 interface CollectionItemProps {
   collection: Collection;
   level: number;
   onSelect: (collectionId: number | null) => void;
-  onUpdate: () => void; 
+  onUpdate: () => void;
   imageCounts: Map<number, number>;
   selectedCollectionId: number | null;
   onOpenCreateSubCollectionDialog: (parentId: number) => void;
@@ -58,8 +58,8 @@ interface CollectionItemProps {
   onToggleOpen: () => void;
   isReviewDuplicatesMode: boolean;
   onToggleReviewDuplicates: () => void;
-  isShowUnassignedMode: boolean; // Pass down
-  onToggleShowUnassigned: () => void; // Pass down
+  isShowUnassignedMode: boolean;
+  onToggleShowUnassigned: () => void;
 }
 
 function CollectionItemView({
@@ -108,7 +108,7 @@ function CollectionItemView({
       toast({ title: "Colección Eliminada", description: `"${collection.name}" ha sido eliminada.` });
       onUpdate();
       if (selectedCollectionId === collection.id) {
-        onSelect(null); 
+        onSelect(null);
       }
     } catch (error) {
        toast({ variant: "destructive", title: "Error al Eliminar Colección", description: (error as Error).message });
@@ -118,7 +118,7 @@ function CollectionItemView({
   const displayName = (level > 0 ? '-'.repeat(level) + ' ' : '') + collection.name;
 
   const handleItemSelect = () => {
-    if (isReviewDuplicatesMode) onToggleReviewDuplicates(); 
+    if (isReviewDuplicatesMode) onToggleReviewDuplicates();
     if (isShowUnassignedMode) onToggleShowUnassigned();
     onSelect(collection.id!);
   };
@@ -126,32 +126,36 @@ function CollectionItemView({
   return (
     <React.Fragment>
       <AliasedSidebarMenuItem>
-        <div className="flex items-center group w-full">
-          {collection.children && collection.children.length > 0 ? (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 p-1 mr-0.5 flex-shrink-0 rounded hover:bg-sidebar-accent"
-              onClick={(e) => { e.stopPropagation(); onToggleOpen(); }}
-              aria-label={isOpen ? `Contraer ${collection.name}` : `Expandir ${collection.name}`}
+        <div className="flex flex-col"> {/* Main container for the item's content */}
+          {/* Line 1: Expand/Collapse, Folder, Name, Count */}
+          <div className="flex items-center w-full">
+            {collection.children && collection.children.length > 0 ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 p-1 mr-0.5 flex-shrink-0 rounded hover:bg-sidebar-accent"
+                onClick={(e) => { e.stopPropagation(); onToggleOpen(); }}
+                aria-label={isOpen ? `Contraer ${collection.name}` : `Expandir ${collection.name}`}
+              >
+                {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              </Button>
+            ) : (
+              <span className="w-7 h-7 mr-0.5 flex-shrink-0"></span>
+            )}
+
+            <SidebarMenuButton
+              onClick={handleItemSelect}
+              isActive={!isReviewDuplicatesMode && !isShowUnassignedMode && selectedCollectionId === collection.id}
+              className="flex-grow h-auto py-1 px-1.5 text-left"
             >
-              {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-            </Button>
-          ) : (
-            <span className="w-7 h-7 mr-0.5 flex-shrink-0"></span> 
-          )}
+              <Folder size={16} className="mr-1 flex-shrink-0" />
+              <span className="truncate flex-1" title={collection.name}>{displayName}</span>
+              <span className="text-xs text-sidebar-foreground/70 ml-2 pl-1 flex-shrink-0">{count}</span>
+            </SidebarMenuButton>
+          </div>
 
-          <SidebarMenuButton
-            onClick={handleItemSelect}
-            isActive={!isReviewDuplicatesMode && !isShowUnassignedMode && selectedCollectionId === collection.id}
-            className="flex-grow h-auto py-1 px-1.5 text-left"
-          >
-            <Folder size={16} className="mr-1 flex-shrink-0" />
-            <span className="truncate flex-1" title={collection.name}>{displayName}</span>
-            <span className="text-xs text-sidebar-foreground/70 ml-2 pl-1 flex-shrink-0">{count}</span>
-          </SidebarMenuButton>
-
-          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center flex-shrink-0 ml-1 pr-1">
+          {/* Line 2: Action Icons (always visible) */}
+          <div className="flex items-center mt-1 pl-7">
              <Button variant="ghost" size="icon" className="h-7 w-7 p-1" onClick={(e) => {e.stopPropagation(); onOpenCreateSubCollectionDialog(collection.id!)}} title={`Añadir sub-colección a ${collection.name}`}>
               <FolderPlus size={14} />
              </Button>
@@ -161,11 +165,11 @@ function CollectionItemView({
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader><DialogTitle>Renombrar Colección</DialogTitle></DialogHeader>
-                <Input 
-                    value={newName} 
-                    onChange={(e) => setNewName(e.target.value)} 
+                <Input
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
                     placeholder="Nuevo nombre de colección"
-                    maxLength={50} 
+                    maxLength={50}
                 />
                 <p className="text-xs text-muted-foreground mt-1">Máx. 50 caracteres.</p>
                 <DialogFooter>
@@ -190,17 +194,20 @@ function CollectionItemView({
           </div>
         </div>
       </AliasedSidebarMenuItem>
+      {collection.children && collection.children.length > 0 && openCollectionIds.has(collection.id!) &&
+        renderCollectionItems(collection.children, level + 1)
+      }
     </React.Fragment>
   );
 }
 
 
-export default function CollectionsPanel({ 
-  onCollectionSelect, 
-  onToggleReviewDuplicates, 
+export default function CollectionsPanel({
+  onCollectionSelect,
+  onToggleReviewDuplicates,
   isReviewDuplicatesMode,
-  onToggleShowUnassigned, // Destructure new prop
-  isShowUnassignedMode, // Destructure new prop
+  onToggleShowUnassigned,
+  isShowUnassignedMode,
 }: CollectionsPanelProps) {
   const { toast } = useToast();
   const [newCollectionName, setNewCollectionName] = useState('');
@@ -222,7 +229,7 @@ export default function CollectionsPanel({
         const collectOpenIds = (collections: Collection[]) => {
             collections.forEach(c => {
                 if (c.id !== undefined && c.children && c.children.length > 0) {
-                    defaultOpen.add(c.id); 
+                    defaultOpen.add(c.id);
                 }
                 if (c.children) {
                     collectOpenIds(c.children);
@@ -231,7 +238,7 @@ export default function CollectionsPanel({
         };
         collectOpenIds(hierarchicalCollections);
         setOpenCollectionIds(defaultOpen);
-        setInitialOpenStateApplied(true); 
+        setInitialOpenStateApplied(true);
     } else if (hierarchicalCollections && hierarchicalCollections.length === 0 && !initialOpenStateApplied) {
         setOpenCollectionIds(new Set());
         setInitialOpenStateApplied(true);
@@ -251,8 +258,8 @@ export default function CollectionsPanel({
   const imageCountsResult = useLiveQuery(
     async () => {
         const countsMap = new Map<number, number>();
-        const allCollections = await getCollections(); 
-        const allImages = await db.images.toArray(); 
+        const allCollections = await getCollections();
+        const allImages = await db.images.toArray();
 
         const countImagesDirectlyInCollection = (collectionId: number): number => {
             let count = 0;
@@ -271,13 +278,13 @@ export default function CollectionsPanel({
         }
         return countsMap;
     },
-    [refreshKey], 
+    [refreshKey],
     new Map<number, number>()
   );
 
   const openCreateCollectionDialog = (parentId: number | null) => {
     setDialogParentId(parentId);
-    setNewCollectionName(''); 
+    setNewCollectionName('');
     setIsCreateDialogOpen(true);
   };
 
@@ -298,7 +305,7 @@ export default function CollectionsPanel({
       setIsCreateDialogOpen(false);
       setRefreshKey(prev => prev + 1);
       if (dialogParentId !== null && !openCollectionIds.has(dialogParentId)) {
-        handleToggleOpen(dialogParentId); 
+        handleToggleOpen(dialogParentId);
       }
     } catch (error) {
       toast({ variant: "destructive", title: "Error", description: "No se pudo crear la colección." });
@@ -306,10 +313,10 @@ export default function CollectionsPanel({
   };
 
   const handleSelectCollectionInternal = (collectionId: number | null) => {
-    setSelectedCollectionId(collectionId); 
-    onCollectionSelect(collectionId); 
+    setSelectedCollectionId(collectionId);
+    onCollectionSelect(collectionId);
   }
-  
+
   const handleSelectAllImages = () => {
     if (isReviewDuplicatesMode) onToggleReviewDuplicates();
     if (isShowUnassignedMode) onToggleShowUnassigned();
@@ -318,16 +325,12 @@ export default function CollectionsPanel({
 
   const handleSelectReviewDuplicates = () => {
     if (!isReviewDuplicatesMode) onToggleReviewDuplicates();
-    // onCollectionSelect(null) is called by onToggleReviewDuplicates when turning on
-    // and also showUnassignedMode is turned off by onToggleReviewDuplicates
   };
 
   const handleSelectShowUnassigned = () => {
     if (!isShowUnassignedMode) onToggleShowUnassigned();
-    // onCollectionSelect(null) is called by onToggleShowUnassigned when turning on
-    // and also reviewDuplicatesMode is turned off by onToggleShowUnassigned
   };
-  
+
   const doRefresh = useCallback(() => {
     setRefreshKey(prev => prev + 1);
   }, []);
@@ -347,7 +350,7 @@ export default function CollectionsPanel({
   const handleCollapseAll = () => {
     setOpenCollectionIds(new Set());
   };
-  
+
   const renderCollectionItems = (collectionsToRender: Collection[], level: number): JSX.Element[] => {
     return collectionsToRender.map(collection => (
       <React.Fragment key={collection.id}>
@@ -363,8 +366,8 @@ export default function CollectionsPanel({
           onToggleOpen={() => handleToggleOpen(collection.id!)}
           isReviewDuplicatesMode={isReviewDuplicatesMode}
           onToggleReviewDuplicates={onToggleReviewDuplicates}
-          isShowUnassignedMode={isShowUnassignedMode} // Pass down
-          onToggleShowUnassigned={onToggleShowUnassigned} // Pass down
+          isShowUnassignedMode={isShowUnassignedMode}
+          onToggleShowUnassigned={onToggleShowUnassigned}
         />
         {collection.children && collection.children.length > 0 && openCollectionIds.has(collection.id!) &&
           renderCollectionItems(collection.children, level + 1)
@@ -432,9 +435,9 @@ export default function CollectionsPanel({
                             collections.forEach(collection => {
                                 const prefix = level > 0 ? '-'.repeat(level) + ' ' : '';
                                 options.push(
-                                    <SelectItem 
-                                        key={collection.id} 
-                                        value={collection.id!.toString()} 
+                                    <SelectItem
+                                        key={collection.id}
+                                        value={collection.id!.toString()}
                                     >
                                         {prefix}{collection.name}
                                     </SelectItem>
@@ -459,8 +462,8 @@ export default function CollectionsPanel({
       </SidebarGroupLabel>
       <SidebarMenu>
         <AliasedSidebarMenuItem>
-          <SidebarMenuButton 
-            onClick={handleSelectReviewDuplicates} 
+          <SidebarMenuButton
+            onClick={handleSelectReviewDuplicates}
             isActive={isReviewDuplicatesMode}
             className={cn(isReviewDuplicatesMode && "bg-destructive/20 text-destructive-foreground hover:bg-destructive/30")}
           >
@@ -470,11 +473,9 @@ export default function CollectionsPanel({
         </AliasedSidebarMenuItem>
 
         <AliasedSidebarMenuItem>
-          <SidebarMenuButton 
-            onClick={handleSelectShowUnassigned} 
+          <SidebarMenuButton
+            onClick={handleSelectShowUnassigned}
             isActive={isShowUnassignedMode}
-            // Add specific styling for active unassigned mode if desired
-            // className={cn(isShowUnassignedMode && "bg-some-color text-some-foreground")} 
           >
             <Unlink size={16} className="mr-1 flex-shrink-0" />
             No asignadas
@@ -482,8 +483,8 @@ export default function CollectionsPanel({
         </AliasedSidebarMenuItem>
 
         <AliasedSidebarMenuItem>
-          <SidebarMenuButton 
-            onClick={handleSelectAllImages} 
+          <SidebarMenuButton
+            onClick={handleSelectAllImages}
             isActive={!isReviewDuplicatesMode && !isShowUnassignedMode && selectedCollectionId === null}
           >
             Todas las Imágenes
@@ -494,5 +495,3 @@ export default function CollectionsPanel({
     </SidebarGroup>
   );
 }
-
-      
