@@ -15,15 +15,18 @@ import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import AddToCollectionDialog from '@/components/collections/AddToCollectionDialog';
 import ImageZoomModal from './ImageZoomModal';
-import RenameImageDialog from './RenameImageDialog'; // New Dialog
+import RenameImageDialog from './RenameImageDialog';
+import { Checkbox } from '@/components/ui/checkbox'; // Import Checkbox
 import { cn } from '@/lib/utils';
 
 interface ImageCardProps {
   image: ImageMetadata;
   onUpdate: () => void;
+  isSelected: boolean;
+  onToggleSelection: () => void;
 }
 
-export default function ImageCard({ image, onUpdate }: ImageCardProps) {
+export default function ImageCard({ image, onUpdate, isSelected, onToggleSelection }: ImageCardProps) {
   const { toast } = useToast();
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [currentRotation, setCurrentRotation] = useState(image.transform?.rotate || 0);
@@ -69,7 +72,6 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
   };
 
   const handleDelete = async () => {
-    // For potential duplicates, we allow deletion even if protected, as user is resolving
     if (image.isProtected && !image.isPotentialDuplicate) {
       toast({ variant: "destructive", title: "Cannot Delete", description: "This image is protected." });
       return;
@@ -82,13 +84,13 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
       toast({ variant: "destructive", title: "Error", description: (error as Error).message || "Failed to delete image." });
     }
   };
-  
+
   const handleRotate = async (direction: 'cw' | 'ccw') => {
     const newRotation = direction === 'cw' ? (currentRotation + 90) % 360 : (currentRotation - 90 + 360) % 360;
     setCurrentRotation(newRotation);
     try {
       await updateImage(image.id!, { transform: { ...image.transform, rotate: newRotation } });
-      onUpdate(); 
+      onUpdate();
     } catch (error) {
       toast({ variant: "destructive", title: "Error", description: "Failed to save rotation."});
     }
@@ -123,22 +125,48 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
 
   return (
     <>
-      <Card className={cn("flex flex-col justify-between shadow-lg hover:shadow-xl transition-shadow duration-300 rounded-lg overflow-hidden", image.isPotentialDuplicate && "border-2 border-destructive/70 ring-2 ring-destructive/30")}>
+      <Card className={cn(
+        "flex flex-col justify-between shadow-lg hover:shadow-xl transition-shadow duration-300 rounded-lg overflow-hidden",
+        image.isPotentialDuplicate && "border-2 border-destructive/70 ring-2 ring-destructive/30",
+        isSelected && "ring-2 ring-primary border-primary shadow-primary/30"
+      )}>
         <CardContent className="p-0">
           <div className="aspect-[4/3] w-full overflow-hidden relative bg-muted group">
             <NextImage
               src={imageUrl}
               alt={image.name}
               fill
-              sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, (max-width: 1280px) 25vw, 20vw"
-              style={{ 
+              style={{
                 objectFit: 'contain',
-                transform: `rotate(${currentRotation}deg)` 
+                transform: `rotate(${currentRotation}deg)`
               }}
               className="transition-transform duration-300 ease-in-out group-hover:scale-105"
               data-ai-hint="photo gallery"
+              onClick={(e) => {
+                 // Prevent click if clicking on an action button inside the overlay
+                if ((e.target as HTMLElement).closest('.image-actions-overlay') || (e.target as HTMLElement).closest('.image-selection-checkbox')) {
+                  return;
+                }
+                onToggleSelection();
+              }}
             />
-            <div className="absolute top-2 right-2 flex gap-1">
+            {/* Selection Checkbox */}
+            <div 
+              className="image-selection-checkbox absolute top-2 left-2 z-20 p-1 bg-background/50 hover:bg-background/70 rounded-full cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation(); // Prevent card click event
+                onToggleSelection();
+              }}
+            >
+              <Checkbox
+                checked={isSelected}
+                onCheckedChange={onToggleSelection}
+                className="h-5 w-5 border-white data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                aria-label="Select image"
+              />
+            </div>
+
+            <div className="absolute top-2 right-2 flex gap-1 z-10">
               {image.isFavorite && !image.isPotentialDuplicate && <Heart className="h-5 w-5 fill-red-500 text-red-500" />}
               {image.isProtected && !image.isPotentialDuplicate && <Shield className="h-5 w-5 fill-blue-500 text-blue-500" />}
               {image.isPotentialDuplicate && (
@@ -150,9 +178,9 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
                 </Tooltip>
               )}
             </div>
-            
+
             {!image.isPotentialDuplicate && (
-              <div className="absolute bottom-0 left-0 right-0 px-1 py-1 bg-gradient-to-t from-black/70 via-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-in-out flex justify-start items-center">
+              <div className="image-actions-overlay absolute bottom-0 left-0 right-0 px-1 py-1 bg-gradient-to-t from-black/70 via-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-in-out flex justify-start items-center z-10">
                 <div className="flex gap-0.5 flex-wrap">
                   <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={handleFavoriteToggle} className="h-[28px] w-[28px] p-1 hover:bg-white/10"><Heart className={cn('h-4 w-4', image.isFavorite ? 'fill-red-500 text-red-500' : 'text-neutral-200 hover:text-white')} /></Button></TooltipTrigger><TooltipContent><p>Favorite</p></TooltipContent></Tooltip>
                   <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={handleProtectToggle} className="h-[28px] w-[28px] p-1 hover:bg-white/10"><Shield className={cn('h-4 w-4', image.isProtected ? 'fill-blue-500 text-blue-500' : 'text-neutral-200 hover:text-white')} /></Button></TooltipTrigger><TooltipContent><p>Protect</p></TooltipContent></Tooltip>
@@ -165,7 +193,7 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
             )}
           </div>
         </CardContent>
-        
+
         <CardHeader className="pt-4 pb-2 px-4">
           <CardTitle className="text-sm font-medium truncate" title={image.name}>{image.name}</CardTitle>
           {image.isPotentialDuplicate && (
@@ -202,8 +230,8 @@ export default function ImageCard({ image, onUpdate }: ImageCardProps) {
               {imageCollections && imageCollections.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-1.5">
                   {imageCollections.map(collection => (
-                    <Badge 
-                      key={collection.id} 
+                    <Badge
+                      key={collection.id}
                       variant="outline"
                       className="text-xs font-semibold border-primary/40 text-foreground hover:bg-primary/10"
                     >
