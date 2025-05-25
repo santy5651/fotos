@@ -3,7 +3,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, getHierarchicalCollections, addCollection as dbAddCollection, getCollections, deleteCollection as dbDeleteCollection, updateCollection as dbUpdateCollection, getUnassignedImageCount } from '@/lib/db';
+import { db, getHierarchicalCollections, addCollection as dbAddCollection, getCollections, deleteCollection as dbDeleteCollection, updateCollection as dbUpdateCollection, getUnassignedImageCount, getTotalImageCount } from '@/lib/db';
 import type { Collection } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -86,6 +86,11 @@ export default function CollectionsPanel({
 
   const unassignedImageCount = useLiveQuery(
     async () => getUnassignedImageCount(),
+    [refreshKey], 0
+  );
+
+  const totalImageCount = useLiveQuery(
+    async () => getTotalImageCount(),
     [refreshKey], 0
   );
 
@@ -201,7 +206,7 @@ function CollectionItemView({
     }
   };
 
-  const displayName = (level > 0 ? '- '.repeat(level) : '') + collection.name;
+  const displayName = ('- '.repeat(level)) + collection.name;
 
   const handleItemSelect = () => {
     if (isReviewDuplicatesMode) onToggleReviewDuplicates();
@@ -378,7 +383,7 @@ function CollectionItemView({
   };
 
 
-  if (!hierarchicalCollections || !imageCountsResult || !flatCollectionsForSelect || unassignedImageCount === undefined) {
+  if (!hierarchicalCollections || !imageCountsResult || !flatCollectionsForSelect || unassignedImageCount === undefined || totalImageCount === undefined) {
     return <div className="p-4"><Loader2 className="animate-spin" /> Cargando colecciones...</div>;
   }
 
@@ -495,8 +500,14 @@ function CollectionItemView({
           <SidebarMenuButton
             onClick={handleSelectAllImages}
             isActive={!isReviewDuplicatesMode && !isShowUnassignedMode && selectedCollectionId === null}
+            className="flex items-center justify-between w-full"
           >
             Todas las Imágenes
+            {totalImageCount > 0 && (
+               <Badge variant="secondary" className="ml-2 text-xs px-1.5 py-0.5">
+                {totalImageCount}
+              </Badge>
+            )}
           </SidebarMenuButton>
         </AliasedSidebarMenuItem>
         {renderCollectionItems(hierarchicalCollections, 0)}
