@@ -6,9 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { UploadCloud, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { addImage, blobToDataURL, checkIfImageExistsByName } from '@/lib/db'; // Ensure checkIfImageExistsByName is imported
+import { addImage, blobToDataURL, checkIfImageExistsByName } from '@/lib/db'; 
 import type { ImageMetadata } from '@/types';
-import { tagImage } from '@/ai/flows/tag-image'; // Ensure this path is correct
+import { tagImage } from '@/ai/flows/tag-image'; 
 
 interface ImageUploadProps {
   onUploadComplete: () => void;
@@ -24,20 +24,23 @@ export default function ImageUpload({ onUploadComplete }: ImageUploadProps) {
 
     setIsUploading(true);
     let uploadedCount = 0;
+    let flaggedCount = 0;
     const totalFiles = files.length;
 
     for (const file of Array.from(files)) {
+      let isPotentialDuplicate = false;
       try {
-        // 0. Check for duplicates by name
-        const isDuplicate = await checkIfImageExistsByName(file.name);
-        if (isDuplicate) {
+        // 0. Check for duplicates by name (non-flagged images)
+        const isExisting = await checkIfImageExistsByName(file.name);
+        if (isExisting) {
+          isPotentialDuplicate = true;
           toast({ 
-            variant: "destructive", // Or "default" if you prefer less alarming
-            title: "Duplicate Skipped", 
-            description: `An image named "${file.name}" already exists and was not uploaded.` 
+            variant: "default", 
+            title: "Potential Duplicate", 
+            description: `Image "${file.name}" has the same name as an existing image. It has been flagged for review.` 
           });
-          console.warn(`Duplicate file skipped: ${file.name}`);
-          continue; // Skip to the next file
+          console.warn(`Potential duplicate file flagged: ${file.name}`);
+          flaggedCount++;
         }
 
         // 1. Get dimensions
@@ -51,7 +54,9 @@ export default function ImageUpload({ onUploadComplete }: ImageUploadProps) {
         try {
           const aiResult = await tagImage({ photoDataUri: dataUri });
           tags = aiResult.tags;
-          toast({ title: "AI Tagging", description: `Tags generated for ${file.name}: ${tags.join(', ')}` });
+          if (!isPotentialDuplicate) { // Don't toast AI tags for duplicates to reduce noise
+            toast({ title: "AI Tagging", description: `Tags generated for ${file.name}: ${tags.join(', ')}` });
+          }
         } catch (aiError) {
           console.error("AI tagging error:", aiError);
           toast({ variant: "destructive", title: "AI Tagging Failed", description: `Could not generate tags for ${file.name}.` });
@@ -67,12 +72,16 @@ export default function ImageUpload({ onUploadComplete }: ImageUploadProps) {
           isFavorite: false,
           isProtected: false,
           mimeType: file.type,
-          collectionIds: [], // Default to no collection
+          collectionIds: [], 
+          isPotentialDuplicate: isPotentialDuplicate, // Set the flag
         };
         
-        await addImage(imageMetadata as any); // Dexie handles the 'file' field correctly
+        await addImage(imageMetadata as any); 
         uploadedCount++;
-        toast({ title: "Upload Success", description: `${file.name} uploaded and processed.` });
+        if (!isPotentialDuplicate) {
+            toast({ title: "Upload Success", description: `${file.name} uploaded and processed.` });
+        }
+
 
       } catch (error) {
         console.error("Upload error:", error);
@@ -83,9 +92,13 @@ export default function ImageUpload({ onUploadComplete }: ImageUploadProps) {
     if (uploadedCount > 0) {
       onUploadComplete();
     }
-    toast({ title: "Upload Finished", description: `${uploadedCount}/${totalFiles} images processed. ${totalFiles - uploadedCount} duplicates skipped.` });
     
-    // Reset file input
+    let summaryDescription = `${uploadedCount}/${totalFiles} images processed.`;
+    if (flaggedCount > 0) {
+        summaryDescription += ` ${flaggedCount} potential duplicate(s) flagged for review.`;
+    }
+    toast({ title: "Upload Finished", description: summaryDescription, duration: 7000 });
+    
     event.target.value = '';
   };
 

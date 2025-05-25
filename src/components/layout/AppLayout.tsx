@@ -13,22 +13,32 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { FileImage, Settings, BarChartBig, Tag as TagIcon } from "lucide-react";
+import { FileImage, Settings, BarChartBig, Tag as TagIcon, CopyCheck, AlertTriangle } from "lucide-react";
 import CollectionsPanel from '@/components/collections/CollectionsPanel';
 import ImageUpload from '@/components/image/ImageUpload';
 import SearchBar from '@/components/search/SearchBar';
 import SettingsDropdown from '@/components/settings/SettingsDropdown';
 import StatisticsModal from '@/components/stats/StatisticsModal';
 import TagExplorerModal from '@/components/tags/TagExplorerModal';
+import { cn } from '@/lib/utils';
 
 interface AppLayoutProps {
   children: ReactNode;
   onSearch: (term: string) => void;
   onCollectionSelect: (collectionId: number | null) => void;
   onUploadComplete: () => void;
+  onToggleReviewDuplicates: () => void;
+  isReviewDuplicatesMode: boolean;
 }
 
-export default function AppLayout({ children, onSearch, onCollectionSelect, onUploadComplete }: AppLayoutProps) {
+export default function AppLayout({ 
+  children, 
+  onSearch, 
+  onCollectionSelect, 
+  onUploadComplete,
+  onToggleReviewDuplicates,
+  isReviewDuplicatesMode
+}: AppLayoutProps) {
   const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
   const [isTagExplorerModalOpen, setIsTagExplorerModalOpen] = useState(false);
 
@@ -56,6 +66,16 @@ export default function AppLayout({ children, onSearch, onCollectionSelect, onUp
             <SearchBar onSearch={onSearch} />
           </div>
           <ImageUpload onUploadComplete={onUploadComplete} />
+          <Button 
+            variant="outline" 
+            size="icon" 
+            onClick={onToggleReviewDuplicates} 
+            title="Review Potential Duplicates"
+            className={cn(isReviewDuplicatesMode && "bg-destructive text-destructive-foreground hover:bg-destructive/90 hover:text-destructive-foreground")}
+          >
+            <AlertTriangle className="h-5 w-5" />
+            <span className="sr-only">Review Potential Duplicates</span>
+          </Button>
           <Button variant="outline" size="icon" onClick={() => setIsTagExplorerModalOpen(true)} title="View All Tags">
             <TagIcon className="h-5 w-5" />
             <span className="sr-only">View All Tags</span>
@@ -75,3 +95,4 @@ export default function AppLayout({ children, onSearch, onCollectionSelect, onUp
     </SidebarProvider>
   );
 }
+

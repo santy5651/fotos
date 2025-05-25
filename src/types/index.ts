@@ -16,6 +16,7 @@ export interface ImageMetadata {
   transform?: { // For visual transformations on image card - transient for now
     rotate: number; // degrees
   };
+  isPotentialDuplicate?: boolean; // Flag for potential duplicates based on filename
 }
 
 export interface Collection {
@@ -27,3 +28,4 @@ export interface Collection {
   imageCount?: number; 
   children?: Collection[]; 
 }
+
