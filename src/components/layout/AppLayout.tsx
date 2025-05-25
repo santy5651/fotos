@@ -27,8 +27,10 @@ interface AppLayoutProps {
   onSearch: (term: string) => void;
   onCollectionSelect: (collectionId: number | null) => void;
   onUploadComplete: () => void;
-  onToggleReviewDuplicates: () => void; // Prop from HomePage
-  isReviewDuplicatesMode: boolean; // Prop from HomePage
+  onToggleReviewDuplicates: () => void;
+  isReviewDuplicatesMode: boolean;
+  onToggleShowUnassigned: () => void; // New prop
+  isShowUnassignedMode: boolean; // New prop
 }
 
 export default function AppLayout({ 
@@ -37,7 +39,9 @@ export default function AppLayout({
   onCollectionSelect, 
   onUploadComplete,
   onToggleReviewDuplicates,
-  isReviewDuplicatesMode
+  isReviewDuplicatesMode,
+  onToggleShowUnassigned, // Destructure new prop
+  isShowUnassignedMode, // Destructure new prop
 }: AppLayoutProps) {
   const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
   const [isTagExplorerModalOpen, setIsTagExplorerModalOpen] = useState(false);
@@ -55,6 +59,8 @@ export default function AppLayout({
               onCollectionSelect={onCollectionSelect} 
               onToggleReviewDuplicates={onToggleReviewDuplicates}
               isReviewDuplicatesMode={isReviewDuplicatesMode}
+              onToggleShowUnassigned={onToggleShowUnassigned} // Pass down
+              isShowUnassignedMode={isShowUnassignedMode} // Pass down
             />
           </ScrollArea>
         </SidebarContent>

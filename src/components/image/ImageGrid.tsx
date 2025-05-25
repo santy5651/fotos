@@ -4,26 +4,35 @@
 import type { ImageMetadata } from '@/types';
 import ImageCard from './ImageCard';
 import { ScrollArea } from '../ui/scroll-area';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, FilterX } from 'lucide-react'; // Added FilterX
 
 interface ImageGridProps {
   images: ImageMetadata[];
   onUpdate: () => void; 
   isReviewDuplicatesMode?: boolean;
+  isShowUnassignedMode?: boolean; // New prop
 }
 
-export default function ImageGrid({ images, onUpdate, isReviewDuplicatesMode }: ImageGridProps) {
+export default function ImageGrid({ images, onUpdate, isReviewDuplicatesMode, isShowUnassignedMode }: ImageGridProps) {
   if (images.length === 0) {
     if (isReviewDuplicatesMode) {
         return (
             <div className="text-center text-muted-foreground py-10 flex flex-col items-center gap-2">
                 <AlertTriangle className="w-10 h-10 text-destructive" />
-                <p>No potential duplicates found.</p>
-                <p className="text-sm">You can return to the normal view by clicking the review button again.</p>
+                <p>No se encontraron duplicados potenciales.</p>
+                <p className="text-sm">Puedes volver a la vista normal haciendo clic nuevamente en el botón de revisión.</p>
             </div>
         );
     }
-    return <div className="text-center text-muted-foreground py-10">No images found. Try uploading some!</div>;
+    if (isShowUnassignedMode) {
+        return (
+            <div className="text-center text-muted-foreground py-10 flex flex-col items-center gap-2">
+                <FilterX className="w-10 h-10 text-muted-foreground" />
+                <p>No hay imágenes sin asignar a colecciones.</p>
+            </div>
+        );
+    }
+    return <div className="text-center text-muted-foreground py-10">No se encontraron imágenes. ¡Intenta subir algunas!</div>;
   }
 
   return (

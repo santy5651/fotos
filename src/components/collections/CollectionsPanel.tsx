@@ -7,7 +7,7 @@ import { db, getHierarchicalCollections, addCollection as dbAddCollection, getCo
 import type { Collection } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, Folder, ChevronDown, ChevronRight, Edit2, Trash2, Loader2, FolderPlus, ListCollapse, AlertTriangle } from 'lucide-react';
+import { Plus, Folder, ChevronDown, ChevronRight, Edit2, Trash2, Loader2, FolderPlus, ListCollapse, AlertTriangle, Unlink } from 'lucide-react'; // Added Unlink
 import { useToast } from '@/hooks/use-toast';
 import {
   Dialog,
@@ -42,13 +42,15 @@ interface CollectionsPanelProps {
   onCollectionSelect: (collectionId: number | null) => void;
   onToggleReviewDuplicates: () => void;
   isReviewDuplicatesMode: boolean;
+  onToggleShowUnassigned: () => void; // New prop
+  isShowUnassignedMode: boolean; // New prop
 }
 
 interface CollectionItemProps {
   collection: Collection;
   level: number;
   onSelect: (collectionId: number | null) => void;
-  onUpdate: () => void; // to refresh list
+  onUpdate: () => void; 
   imageCounts: Map<number, number>;
   selectedCollectionId: number | null;
   onOpenCreateSubCollectionDialog: (parentId: number) => void;
@@ -56,6 +58,8 @@ interface CollectionItemProps {
   onToggleOpen: () => void;
   isReviewDuplicatesMode: boolean;
   onToggleReviewDuplicates: () => void;
+  isShowUnassignedMode: boolean; // Pass down
+  onToggleShowUnassigned: () => void; // Pass down
 }
 
 function CollectionItemView({
@@ -70,6 +74,8 @@ function CollectionItemView({
   onToggleOpen,
   isReviewDuplicatesMode,
   onToggleReviewDuplicates,
+  isShowUnassignedMode,
+  onToggleShowUnassigned,
 }: CollectionItemProps) {
   const { toast } = useToast();
   const [isRenaming, setIsRenaming] = useState(false);
@@ -102,7 +108,7 @@ function CollectionItemView({
       toast({ title: "Colección Eliminada", description: `"${collection.name}" ha sido eliminada.` });
       onUpdate();
       if (selectedCollectionId === collection.id) {
-        onSelect(null); // Deselect if current one is deleted
+        onSelect(null); 
       }
     } catch (error) {
        toast({ variant: "destructive", title: "Error al Eliminar Colección", description: (error as Error).message });
@@ -112,9 +118,8 @@ function CollectionItemView({
   const displayName = (level > 0 ? '-'.repeat(level) + ' ' : '') + collection.name;
 
   const handleItemSelect = () => {
-    if (isReviewDuplicatesMode) {
-      onToggleReviewDuplicates(); // Turn off review mode if a normal collection is selected
-    }
+    if (isReviewDuplicatesMode) onToggleReviewDuplicates(); 
+    if (isShowUnassignedMode) onToggleShowUnassigned();
     onSelect(collection.id!);
   };
 
@@ -138,7 +143,7 @@ function CollectionItemView({
 
           <SidebarMenuButton
             onClick={handleItemSelect}
-            isActive={!isReviewDuplicatesMode && selectedCollectionId === collection.id}
+            isActive={!isReviewDuplicatesMode && !isShowUnassignedMode && selectedCollectionId === collection.id}
             className="flex-grow h-auto py-1 px-1.5 text-left"
           >
             <Folder size={16} className="mr-1 flex-shrink-0" />
@@ -190,13 +195,19 @@ function CollectionItemView({
 }
 
 
-export default function CollectionsPanel({ onCollectionSelect, onToggleReviewDuplicates, isReviewDuplicatesMode }: CollectionsPanelProps) {
+export default function CollectionsPanel({ 
+  onCollectionSelect, 
+  onToggleReviewDuplicates, 
+  isReviewDuplicatesMode,
+  onToggleShowUnassigned, // Destructure new prop
+  isShowUnassignedMode, // Destructure new prop
+}: CollectionsPanelProps) {
   const { toast } = useToast();
   const [newCollectionName, setNewCollectionName] = useState('');
   const [dialogParentId, setDialogParentId] = useState<number | null>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [selectedCollectionId, setSelectedCollectionId] = useState<number | null>(null); // Represents the actual selected collection ID
+  const [selectedCollectionId, setSelectedCollectionId] = useState<number | null>(null);
   const [openCollectionIds, setOpenCollectionIds] = useState<Set<number>>(new Set());
   const [initialOpenStateApplied, setInitialOpenStateApplied] = useState(false);
 
@@ -295,22 +306,26 @@ export default function CollectionsPanel({ onCollectionSelect, onToggleReviewDup
   };
 
   const handleSelectCollectionInternal = (collectionId: number | null) => {
-    setSelectedCollectionId(collectionId); // Keep track of the actual collection ID
-    onCollectionSelect(collectionId); // Notify parent (HomePage)
+    setSelectedCollectionId(collectionId); 
+    onCollectionSelect(collectionId); 
   }
   
   const handleSelectAllImages = () => {
-    if (isReviewDuplicatesMode) {
-      onToggleReviewDuplicates(); // Turn off review mode
-    }
+    if (isReviewDuplicatesMode) onToggleReviewDuplicates();
+    if (isShowUnassignedMode) onToggleShowUnassigned();
     handleSelectCollectionInternal(null);
   };
 
   const handleSelectReviewDuplicates = () => {
-    if (!isReviewDuplicatesMode) {
-      onToggleReviewDuplicates(); // Turn on review mode
-    }
+    if (!isReviewDuplicatesMode) onToggleReviewDuplicates();
     // onCollectionSelect(null) is called by onToggleReviewDuplicates when turning on
+    // and also showUnassignedMode is turned off by onToggleReviewDuplicates
+  };
+
+  const handleSelectShowUnassigned = () => {
+    if (!isShowUnassignedMode) onToggleShowUnassigned();
+    // onCollectionSelect(null) is called by onToggleShowUnassigned when turning on
+    // and also reviewDuplicatesMode is turned off by onToggleShowUnassigned
   };
   
   const doRefresh = useCallback(() => {
@@ -339,7 +354,7 @@ export default function CollectionsPanel({ onCollectionSelect, onToggleReviewDup
         <CollectionItemView
           collection={collection}
           level={level}
-          onSelect={handleSelectCollectionInternal} // Use internal handler
+          onSelect={handleSelectCollectionInternal}
           onUpdate={doRefresh}
           imageCounts={imageCountsResult}
           selectedCollectionId={selectedCollectionId}
@@ -348,6 +363,8 @@ export default function CollectionsPanel({ onCollectionSelect, onToggleReviewDup
           onToggleOpen={() => handleToggleOpen(collection.id!)}
           isReviewDuplicatesMode={isReviewDuplicatesMode}
           onToggleReviewDuplicates={onToggleReviewDuplicates}
+          isShowUnassignedMode={isShowUnassignedMode} // Pass down
+          onToggleShowUnassigned={onToggleShowUnassigned} // Pass down
         />
         {collection.children && collection.children.length > 0 && openCollectionIds.has(collection.id!) &&
           renderCollectionItems(collection.children, level + 1)
@@ -454,8 +471,20 @@ export default function CollectionsPanel({ onCollectionSelect, onToggleReviewDup
 
         <AliasedSidebarMenuItem>
           <SidebarMenuButton 
+            onClick={handleSelectShowUnassigned} 
+            isActive={isShowUnassignedMode}
+            // Add specific styling for active unassigned mode if desired
+            // className={cn(isShowUnassignedMode && "bg-some-color text-some-foreground")} 
+          >
+            <Unlink size={16} className="mr-1 flex-shrink-0" />
+            No asignadas
+          </SidebarMenuButton>
+        </AliasedSidebarMenuItem>
+
+        <AliasedSidebarMenuItem>
+          <SidebarMenuButton 
             onClick={handleSelectAllImages} 
-            isActive={!isReviewDuplicatesMode && selectedCollectionId === null}
+            isActive={!isReviewDuplicatesMode && !isShowUnassignedMode && selectedCollectionId === null}
           >
             Todas las Imágenes
           </SidebarMenuButton>

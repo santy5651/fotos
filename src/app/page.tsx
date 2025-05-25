@@ -13,36 +13,40 @@ export default function HomePage() {
   const [currentCollectionId, setCurrentCollectionId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [reviewDuplicatesMode, setReviewDuplicatesMode] = useState<boolean>(false);
-  const [refreshKey, setRefreshKey] = useState(0); // To manually trigger re-fetch/re-render
+  const [showUnassignedMode, setShowUnassignedMode] = useState<boolean>(false); // New state
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const images = useLiveQuery(
     async () => {
-      const filter: any = { reviewDuplicates: reviewDuplicatesMode };
-      if (!reviewDuplicatesMode) { // Only apply collection/search if not in review mode
-        if (currentCollectionId !== null) {
-          filter.collectionId = currentCollectionId;
-        }
-        if (searchTerm) {
-          filter.searchTerm = searchTerm;
-        }
+      const filter: any = { 
+        reviewDuplicates: reviewDuplicatesMode,
+        showUnassigned: showUnassignedMode 
+      };
+      // Only apply collectionId if not in reviewDuplicates or showUnassigned mode
+      if (!reviewDuplicatesMode && !showUnassignedMode && currentCollectionId !== null) {
+        filter.collectionId = currentCollectionId;
+      }
+      // searchTerm is applied universally by getImages after initial filtering
+      if (searchTerm) {
+        filter.searchTerm = searchTerm;
       }
       return getImages(filter);
     },
-    [currentCollectionId, searchTerm, refreshKey, reviewDuplicatesMode], // Dependencies
-    [] // Initial value
+    [currentCollectionId, searchTerm, refreshKey, reviewDuplicatesMode, showUnassignedMode],
+    []
   );
 
   const handleSearch = useCallback((term: string) => {
     setSearchTerm(term);
-    // No longer need to exit review mode if searching, as review mode is now a "special collection"
+    // Searching should ideally not automatically exit special modes, 
+    // as the user might want to search within "Review Duplicates" or "Unassigned"
   }, []);
 
   const handleCollectionSelect = useCallback((collectionId: number | null) => {
     setCurrentCollectionId(collectionId);
-    if (reviewDuplicatesMode && collectionId !== null) { // If a real collection is selected while in review mode
-      setReviewDuplicatesMode(false); // Exit review mode
-    }
-  }, [reviewDuplicatesMode]);
+    if (reviewDuplicatesMode) setReviewDuplicatesMode(false);
+    if (showUnassignedMode) setShowUnassignedMode(false);
+  }, [reviewDuplicatesMode, showUnassignedMode]);
 
   const handleUploadComplete = useCallback(() => {
     setRefreshKey(prev => prev + 1); 
@@ -53,17 +57,25 @@ export default function HomePage() {
   }, []);
 
   const toggleReviewDuplicatesMode = useCallback(() => {
-    setReviewDuplicatesMode(prev => {
-      const newMode = !prev;
-      if (newMode) {
-        // When entering review mode, clear other filters
-        setCurrentCollectionId(null);
-        setSearchTerm('');
-      }
-      // If exiting review mode, currentCollectionId might be null (meaning "All Images") or set by handleCollectionSelect
-      return newMode;
-    });
-  }, []);
+    const newMode = !reviewDuplicatesMode;
+    setReviewDuplicatesMode(newMode);
+    if (newMode) {
+      setCurrentCollectionId(null);
+      // setSearchTerm(''); // Keep search term if user wants to search within duplicates
+      setShowUnassignedMode(false); 
+    }
+  }, [reviewDuplicatesMode]);
+
+  const toggleShowUnassignedMode = useCallback(() => { // New handler
+    const newMode = !showUnassignedMode;
+    setShowUnassignedMode(newMode);
+    if (newMode) {
+      setCurrentCollectionId(null);
+      // setSearchTerm(''); // Keep search term if user wants to search within unassigned
+      setReviewDuplicatesMode(false);
+    }
+  }, [showUnassignedMode]);
+
 
   if (images === undefined) { 
     return (
@@ -78,13 +90,16 @@ export default function HomePage() {
       onSearch={handleSearch} 
       onCollectionSelect={handleCollectionSelect}
       onUploadComplete={handleUploadComplete}
-      onToggleReviewDuplicates={toggleReviewDuplicatesMode} // Pass this down
-      isReviewDuplicatesMode={reviewDuplicatesMode} // Pass this down
+      onToggleReviewDuplicates={toggleReviewDuplicatesMode}
+      isReviewDuplicatesMode={reviewDuplicatesMode}
+      onToggleShowUnassigned={toggleShowUnassignedMode} // Pass new handler
+      isShowUnassignedMode={showUnassignedMode} // Pass new state
     >
       <ImageGrid 
         images={images} 
         onUpdate={handleImageUpdate} 
         isReviewDuplicatesMode={reviewDuplicatesMode} 
+        isShowUnassignedMode={showUnassignedMode}
       />
     </AppLayout>
   );
