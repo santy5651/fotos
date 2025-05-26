@@ -516,11 +516,9 @@ function CollectionItemView({
               <Unlink size={16} className="mr-1 flex-shrink-0" />
               No asignadas
             </div>
-            {unassignedImageCount > 0 && (
-              <Badge variant="secondary" className="ml-2 text-xs px-1.5 py-0.5">
-                {unassignedImageCount}
-              </Badge>
-            )}
+            <Badge variant="secondary" className="ml-2 text-xs px-1.5 py-0.5">
+              {unassignedImageCount}
+            </Badge>
           </SidebarMenuButton>
         </AliasedSidebarMenuItem>
 
@@ -534,11 +532,9 @@ function CollectionItemView({
               <Tags size={16} className="mr-1 flex-shrink-0" />
               Sin etiquetas
             </div>
-            {untaggedImageCount > 0 && (
-              <Badge variant="secondary" className="ml-2 text-xs px-1.5 py-0.5">
-                {untaggedImageCount}
-              </Badge>
-            )}
+            <Badge variant="secondary" className="ml-2 text-xs px-1.5 py-0.5">
+              {untaggedImageCount}
+            </Badge>
           </SidebarMenuButton>
         </AliasedSidebarMenuItem>
 
