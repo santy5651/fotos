@@ -61,49 +61,57 @@ export const getImages = async (filter?: {
   reviewDuplicates?: boolean;
   showUnassigned?: boolean;
 }): Promise<ImageMetadata[]> => {
-  let imagesToFilter: Dexie.Collection<ImageMetadata, number>;
+  let imagesQuery: Dexie.Collection<ImageMetadata, number>;
 
   if (filter?.reviewDuplicates) {
-    imagesToFilter = db.images.filter(img => img.isPotentialDuplicate === true);
+    imagesQuery = db.images.filter(img => img.isPotentialDuplicate === true);
   } else if (filter?.showUnassigned) {
-    imagesToFilter = db.images.filter(img =>
+    imagesQuery = db.images.filter(img =>
       !img.isPotentialDuplicate &&
       (!img.collectionIds || img.collectionIds.length === 0)
     );
   } else if (filter?.collectionId !== null && filter?.collectionId !== undefined) {
     const selectedCollectionId = filter.collectionId;
-    imagesToFilter = db.images.filter(img =>
+    imagesQuery = db.images.filter(img =>
       !img.isPotentialDuplicate &&
-      ( (img.collectionIds && img.collectionIds.includes(selectedCollectionId)) ||
-        (!img.collectionIds || img.collectionIds.length === 0) 
-      )
+      ((img.collectionIds && img.collectionIds.includes(selectedCollectionId)) ||
+       (!img.collectionIds || img.collectionIds.length === 0)) // Also include unassigned if a specific collection is chosen
     );
   } else { 
-    imagesToFilter = db.images.filter(img => !img.isPotentialDuplicate);
+    // "All Images" or no specific collection/mode filter (besides search term)
+    imagesQuery = db.images.filter(img => !img.isPotentialDuplicate);
   }
 
-  let sortedImages = await imagesToFilter.sortBy('createdAt');
-  sortedImages.reverse();
-
+  let sortedImages = await imagesQuery.sortBy('createdAt');
+  sortedImages.reverse(); // Show newest first by default
 
   if (filter?.searchTerm && filter.searchTerm.trim() !== '') {
-    const term = filter.searchTerm.toLowerCase();
-    const allCollections = await db.collections.toArray();
+    const searchTerm = filter.searchTerm.trim();
+    
+    if (searchTerm.startsWith('tag:')) {
+      const tagName = searchTerm.substring(4).toLowerCase();
+      return sortedImages.filter(img => 
+        img.tags && img.tags.some(tag => tag.toLowerCase() === tagName)
+      );
+    } else {
+      const term = searchTerm.toLowerCase();
+      const allCollections = await db.collections.toArray(); // Needed for searching by collection name
 
-    return sortedImages.filter(img => {
-      if (img.name.toLowerCase().includes(term)) return true;
-      if (img.tags && img.tags.some(tag => tag.toLowerCase().includes(term))) return true;
-      
-      if (img.collectionIds && img.collectionIds.length > 0) {
-        const imageCollectionNames = img.collectionIds
-          .map(id => allCollections.find(c => c.id === id)?.name)
-          .filter(name => !!name) as string[];
-        if (imageCollectionNames.some(name => name.toLowerCase().includes(term))) {
-          return true;
+      return sortedImages.filter(img => {
+        if (img.name.toLowerCase().includes(term)) return true;
+        if (img.tags && img.tags.some(tag => tag.toLowerCase().includes(term))) return true;
+        
+        if (img.collectionIds && img.collectionIds.length > 0) {
+          const imageCollectionNames = img.collectionIds
+            .map(id => allCollections.find(c => c.id === id)?.name)
+            .filter(name => !!name) as string[];
+          if (imageCollectionNames.some(name => name.toLowerCase().includes(term))) {
+            return true;
+          }
         }
-      }
-      return false;
-    });
+        return false;
+      });
+    }
   }
 
   return sortedImages;
@@ -211,44 +219,51 @@ export const exportData = async (): Promise<{ metadataJson: string, imageFiles: 
   console.log(`[EXPORT DEBUG] Exporting: Found ${images.length} images and ${collections.length} collections.`);
 
   const metadata = {
-    version: 3,
+    version: 3, // Ensure this matches the current DB schema version if it's relevant for import logic
     collections: collections.map(c => {
-      // Explicitly exclude runtime properties like children and imageCount for export
       const { children, imageCount, ...serializableCollection } = c;
       return {
-        ...serializableCollection, // Contains id, name, parentId (potentially undefined if root)
+        ...serializableCollection,
         createdAt: c.createdAt ? c.createdAt.toISOString() : new Date().toISOString(),
       };
     }),
     images: images.map(img => {
-      const extension = img.mimeType && img.mimeType.includes('/') ? `.${img.mimeType.split('/')[1].toLowerCase().replace('jpeg', 'jpg')}` : '.bin';
-      const sanitizedOriginalName = (img.name || `image_no_name`).replace(/[^a-zA-Z0-9_.-]/g, '_');
+      // Sanitize original name for use in zip, ensure ID is part of filename for uniqueness
+      const sanitizedOriginalName = (img.name || `image_no_name_${img.id || 'unknown'}`).replace(/[^a-zA-Z0-9_.-]/g, '_');
+      // Use a consistent extension based on mimeType if possible, fallback if not
+      let extension = '.bin';
+      if (img.mimeType && img.mimeType.includes('/')) {
+          const typePart = img.mimeType.split('/')[1].toLowerCase();
+          extension = `.${typePart === 'jpeg' ? 'jpg' : typePart}`;
+      }
       const fileNameInZip = `img_${img.id}_${sanitizedOriginalName}${extension}`;
 
-      // Explicitly exclude File object and other transient properties
       const { file, dataUri, ...serializableImageBase } = img; 
-      const serializableImage = {
-        ...serializableImageBase, // Contains all other relevant metadata
-        fileNameInZip: fileNameInZip,
+      return {
+        ...serializableImageBase,
+        fileNameInZip: fileNameInZip, // Store the name used in the zip for re-linking
         createdAt: img.createdAt ? img.createdAt.toISOString() : new Date().toISOString(),
-        // Ensure fields that might be optional are present with defaults if needed for import
         tags: img.tags || [],
         collectionIds: img.collectionIds || [],
         transform: img.transform || { rotate: 0 },
         isPotentialDuplicate: img.isPotentialDuplicate || false,
       };
-      return serializableImage;
     }),
   };
 
   const imageFiles = images
     .filter(img => img.file instanceof Blob)
     .map(img => {
-        const extension = img.mimeType && img.mimeType.includes('/') ? `.${img.mimeType.split('/')[1].toLowerCase().replace('jpeg', 'jpg')}` : '.bin';
-        const sanitizedOriginalName = (img.name || `image_no_name`).replace(/[^a-zA-Z0-9_.-]/g, '_');
+        // Reconstruct filename exactly as it will be in metadata.images.fileNameInZip
+        const sanitizedOriginalName = (img.name || `image_no_name_${img.id || 'unknown'}`).replace(/[^a-zA-Z0-9_.-]/g, '_');
+        let extension = '.bin';
+        if (img.mimeType && img.mimeType.includes('/')) {
+            const typePart = img.mimeType.split('/')[1].toLowerCase();
+            extension = `.${typePart === 'jpeg' ? 'jpg' : typePart}`;
+        }
         const fileNameInZip = `img_${img.id}_${sanitizedOriginalName}${extension}`;
         return {
-            name: fileNameInZip,
+            name: fileNameInZip, 
             blob: img.file as Blob
         };
   });
@@ -292,6 +307,7 @@ export const importData = async (metadataJson: string, files: File[]): Promise<s
     for (const collToImport of importedCollectionsRaw) {
       const oldCollectionId = collToImport.id;
 
+      // Constructing the collection entry more explicitly
       const newCollectionEntry: Omit<Collection, 'id' | 'children' | 'imageCount'> = {
         name: collToImport.name || "Unnamed Collection",
         createdAt: collToImport.createdAt ? new Date(collToImport.createdAt) : new Date(),
@@ -306,12 +322,10 @@ export const importData = async (metadataJson: string, files: File[]): Promise<s
       }
 
       try {
-        // Explicitly cast to Collection for Dexie's add method
         const newGeneratedDbId = await db.collections.add(newCollectionEntry as Collection);
-        if (oldCollectionId !== undefined) {
+        if (oldCollectionId !== undefined && oldCollectionId !== null) { // Ensure oldCollectionId is valid before mapping
           oldToNewCollectionIdMap.set(oldCollectionId, newGeneratedDbId);
         }
-        // Store the original parentId for Pass 2
         collectionParentImportData.push({ newDbId: newGeneratedDbId, oldParentId: collToImport.parentId ?? null });
         console.log(`[IMPORT DEBUG DB] Added collection "${newCollectionEntry.name}". Old ID: ${oldCollectionId}, New DB ID: ${newGeneratedDbId}. Original parentId: ${collToImport.parentId}`);
       } catch (e) {
@@ -359,10 +373,9 @@ export const importData = async (metadataJson: string, files: File[]): Promise<s
 
         const newImageCollectionIds = (imgJson.collectionIds || [])
           .map((oldCollId: number) => oldToNewCollectionIdMap.get(oldCollId))
-          .filter((newCollId?: number): newCollId is number => newCollId !== undefined);
+          .filter((newCollId?: number): newCollId is number => newCollId !== undefined && newCollId !== null);
         console.log(`[IMPORT DEBUG DB] Mapped collection IDs for "${imgJson.name}": Old ${JSON.stringify(imgJson.collectionIds)}, New ${JSON.stringify(newImageCollectionIds)}`);
 
-        // Construct the ImageMetadata object by picking known fields
         const imageToAdd: Omit<ImageMetadata, 'id'> = {
           name: imgJson.name || imageFile.name,
           file: imageFile,
@@ -372,10 +385,10 @@ export const importData = async (metadataJson: string, files: File[]): Promise<s
           isFavorite: typeof imgJson.isFavorite === 'boolean' ? imgJson.isFavorite : false,
           isProtected: typeof imgJson.isProtected === 'boolean' ? imgJson.isProtected : false,
           createdAt: imgJson.createdAt ? new Date(imgJson.createdAt) : new Date(),
-          mimeType: imageFile.type || imgJson.mimeType, // Prefer file's type, fallback to JSON
+          mimeType: imageFile.type || imgJson.mimeType || 'application/octet-stream', // Ensure a fallback mimeType
           syncStatus: imgJson.syncStatus || 'local',
           collectionIds: newImageCollectionIds,
-          transform: imgJson.transform || { rotate: 0 },
+          transform: imgJson.transform && typeof imgJson.transform.rotate === 'number' ? imgJson.transform : { rotate: 0 },
           isPotentialDuplicate: typeof imgJson.isPotentialDuplicate === 'boolean' ? imgJson.isPotentialDuplicate : false,
         };
 
@@ -387,7 +400,6 @@ export const importData = async (metadataJson: string, files: File[]): Promise<s
         }
 
         try {
-          // Explicitly cast to ImageMetadata for Dexie's add method
           await db.images.add(imageToAdd as ImageMetadata);
           imagesAddedCount++;
           console.log(`[IMPORT DEBUG DB] Added image "${imageToAdd.name}" to DB.`);
@@ -435,7 +447,7 @@ export const getImagesPerCollection = async (): Promise<{ name: string, count: n
   const counts = await Promise.all(
     collections.map(async (collection) => {
       if (collection.id === undefined) return { name: collection.name, count: 0 };
-      const count = await db.images.filter(img => img.collectionIds.includes(collection.id!) && !img.isPotentialDuplicate).count();
+      const count = await db.images.filter(img => !img.isPotentialDuplicate && img.collectionIds.includes(collection.id!)).count();
       return { name: collection.name, count };
     })
   );
@@ -478,4 +490,3 @@ export const bulkAddImagesToCollections = async (imageIds: number[], targetColle
     }
   });
 };
-

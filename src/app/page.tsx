@@ -9,7 +9,7 @@ import { db, getImages } from '@/lib/db';
 import type { ImageMetadata } from '@/types';
 import { Loader2, CheckSquare, Square, FolderPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import BulkAddToCollectionDialog from '@/components/collections/BulkAddToCollectionDialog'; // Import skeleton
+import BulkAddToCollectionDialog from '@/components/collections/BulkAddToCollectionDialog';
 
 export default function HomePage() {
   const [currentCollectionId, setCurrentCollectionId] = useState<number | null>(null);
@@ -40,14 +40,15 @@ export default function HomePage() {
 
   const handleSearch = useCallback((term: string) => {
     setSearchTerm(term);
-    setSelectedImageIds(new Set()); // Clear selection on new search
+    setSelectedImageIds(new Set()); 
   }, []);
 
   const handleCollectionSelect = useCallback((collectionId: number | null) => {
     setCurrentCollectionId(collectionId);
     if (reviewDuplicatesMode) setReviewDuplicatesMode(false);
     if (showUnassignedMode) setShowUnassignedMode(false);
-    setSelectedImageIds(new Set()); // Clear selection on collection change
+    setSearchTerm(''); // Clear search term when changing collection via sidebar
+    setSelectedImageIds(new Set()); 
   }, [reviewDuplicatesMode, showUnassignedMode]);
 
   const handleUploadComplete = useCallback(() => {
@@ -64,8 +65,9 @@ export default function HomePage() {
     if (newMode) {
       setCurrentCollectionId(null);
       setShowUnassignedMode(false);
+      setSearchTerm(''); // Clear search term
     }
-    setSelectedImageIds(new Set()); // Clear selection on mode change
+    setSelectedImageIds(new Set()); 
   }, [reviewDuplicatesMode]);
 
   const toggleShowUnassignedMode = useCallback(() => {
@@ -74,8 +76,9 @@ export default function HomePage() {
     if (newMode) {
       setCurrentCollectionId(null);
       setReviewDuplicatesMode(false);
+      setSearchTerm(''); // Clear search term
     }
-    setSelectedImageIds(new Set()); // Clear selection on mode change
+    setSelectedImageIds(new Set()); 
   }, [showUnassignedMode]);
 
   const handleToggleImageSelection = useCallback((imageId: number) => {
@@ -154,6 +157,7 @@ export default function HomePage() {
         isShowUnassignedMode={showUnassignedMode}
         selectedImageIds={selectedImageIds}
         onImageToggleSelection={handleToggleImageSelection}
+        searchTerm={searchTerm} // Pass searchTerm to ImageGrid
       />
       {isBulkAddToCollectionDialogOpen && (
         <BulkAddToCollectionDialog
@@ -161,8 +165,8 @@ export default function HomePage() {
           isOpen={isBulkAddToCollectionDialogOpen}
           onClose={() => setIsBulkAddToCollectionDialogOpen(false)}
           onBulkUpdateCollections={() => {
-            handleImageUpdate(); // Refresh images
-            handleDeselectAllImages(); // Clear selection after action
+            handleImageUpdate(); 
+            handleDeselectAllImages(); 
           }}
         />
       )}

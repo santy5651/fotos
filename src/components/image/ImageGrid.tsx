@@ -4,7 +4,7 @@
 import type { ImageMetadata } from '@/types';
 import ImageCard from './ImageCard';
 import { ScrollArea } from '../ui/scroll-area';
-import { AlertTriangle, FilterX } from 'lucide-react';
+import { AlertTriangle, FilterX, Inbox } from 'lucide-react'; // Added Inbox for general empty state
 
 interface ImageGridProps {
   images: ImageMetadata[];
@@ -13,6 +13,7 @@ interface ImageGridProps {
   isShowUnassignedMode?: boolean;
   selectedImageIds: Set<number>;
   onImageToggleSelection: (imageId: number) => void;
+  searchTerm?: string; // New prop
 }
 
 export default function ImageGrid({ 
@@ -21,7 +22,8 @@ export default function ImageGrid({
   isReviewDuplicatesMode, 
   isShowUnassignedMode,
   selectedImageIds,
-  onImageToggleSelection
+  onImageToggleSelection,
+  searchTerm
 }: ImageGridProps) {
   if (images.length === 0) {
     if (isReviewDuplicatesMode) {
@@ -29,7 +31,7 @@ export default function ImageGrid({
             <div className="text-center text-muted-foreground py-10 flex flex-col items-center gap-2">
                 <AlertTriangle className="w-10 h-10 text-destructive" />
                 <p>No se encontraron duplicados potenciales.</p>
-                <p className="text-sm">Puedes volver a la vista normal haciendo clic nuevamente en el botón de revisión.</p>
+                <p className="text-sm">Puedes volver a la vista normal haciendo clic nuevamente en la opción de revisión.</p>
             </div>
         );
     }
@@ -41,11 +43,34 @@ export default function ImageGrid({
             </div>
         );
     }
-    return <div className="text-center text-muted-foreground py-10">No se encontraron imágenes. ¡Intenta subir algunas!</div>;
+    if (searchTerm?.startsWith('tag:')) {
+      const tagName = searchTerm.substring(4);
+      return (
+        <div className="text-center text-muted-foreground py-10 flex flex-col items-center gap-2">
+          <Inbox className="w-10 h-10 text-muted-foreground" />
+          <p>No se encontraron imágenes con la etiqueta: "{tagName}".</p>
+        </div>
+      );
+    }
+    if (searchTerm && searchTerm.trim() !== '') {
+       return (
+        <div className="text-center text-muted-foreground py-10 flex flex-col items-center gap-2">
+          <Inbox className="w-10 h-10 text-muted-foreground" />
+          <p>No se encontraron imágenes para el término de búsqueda: "{searchTerm}".</p>
+        </div>
+      );
+    }
+    return (
+      <div className="text-center text-muted-foreground py-10 flex flex-col items-center gap-2">
+        <Inbox className="w-10 h-10 text-muted-foreground" />
+        <p>No se encontraron imágenes.</p>
+        <p className="text-sm">¡Intenta subir algunas o ajusta tus filtros!</p>
+      </div>
+    );
   }
 
   return (
-    <ScrollArea className="h-[calc(100vh-10rem)]">
+    <ScrollArea className="h-[calc(100vh-10rem)]"> {/* Adjusted height to account for potential top action bar */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 p-1">
         {images.map((image) => (
           <ImageCard 

@@ -12,9 +12,10 @@ import { getAllUniqueTags } from '@/lib/db';
 interface TagExplorerModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onTagSelectAndClose: (tag: string) => void; // New prop
 }
 
-export default function TagExplorerModal({ isOpen, onClose }: TagExplorerModalProps) {
+export default function TagExplorerModal({ isOpen, onClose, onTagSelectAndClose }: TagExplorerModalProps) {
   const [tags, setTags] = useState<string[] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -36,6 +37,10 @@ export default function TagExplorerModal({ isOpen, onClose }: TagExplorerModalPr
     }
   }, [isOpen]);
 
+  const handleTagClick = (tag: string) => {
+    onTagSelectAndClose(tag);
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[500px]">
@@ -44,18 +49,24 @@ export default function TagExplorerModal({ isOpen, onClose }: TagExplorerModalPr
             <Tag className="mr-2 h-5 w-5" />
             All Tags
           </DialogTitle>
-          <DialogDescription>A list of all unique tags used in your image library.</DialogDescription>
+          <DialogDescription>Select a tag to filter images.</DialogDescription>
         </DialogHeader>
         {isLoading ? (
           <div className="flex justify-center items-center h-40">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         ) : (
-          <ScrollArea className="max-h-[400px] my-4">
+          <ScrollArea className="max-h-[400px] my-4 border rounded-md p-4">
             {tags && tags.length > 0 ? (
               <div className="flex flex-wrap gap-2">
                 {tags.map(tag => (
-                  <Badge key={tag} variant="secondary" className="text-sm px-3 py-1">
+                  <Badge
+                    key={tag}
+                    variant="secondary"
+                    className="text-sm px-3 py-1 cursor-pointer hover:bg-accent hover:text-accent-foreground"
+                    onClick={() => handleTagClick(tag)}
+                    title={`Filter by tag: ${tag}`}
+                  >
                     {tag}
                   </Badge>
                 ))}
@@ -66,7 +77,7 @@ export default function TagExplorerModal({ isOpen, onClose }: TagExplorerModalPr
           </ScrollArea>
         )}
         <DialogFooter>
-          <Button onClick={onClose}>Close</Button>
+          <Button variant="outline" onClick={onClose}>Close</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -13,14 +13,14 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { FileImage, Settings, BarChartBig, Tag as TagIcon, FolderSearch } from "lucide-react";
+import { FileImage, Settings, BarChartBig, Tag as TagIconLucide, FolderSearch } from "lucide-react"; // Renamed Tag to TagIconLucide
 import CollectionsPanel from '@/components/collections/CollectionsPanel';
 import ImageUpload from '@/components/image/ImageUpload';
 import SearchBar from '@/components/search/SearchBar';
 import SettingsDropdown from '@/components/settings/SettingsDropdown';
 import StatisticsModal from '@/components/stats/StatisticsModal';
 import TagExplorerModal from '@/components/tags/TagExplorerModal';
-import CollectionExplorerModal from '@/components/collections/CollectionExplorerModal'; // New import
+import CollectionExplorerModal from '@/components/collections/CollectionExplorerModal';
 import { cn } from '@/lib/utils';
 
 interface AppLayoutProps {
@@ -46,11 +46,16 @@ export default function AppLayout({
 }: AppLayoutProps) {
   const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
   const [isTagExplorerModalOpen, setIsTagExplorerModalOpen] = useState(false);
-  const [isCollectionExplorerModalOpen, setIsCollectionExplorerModalOpen] = useState(false); // New state
+  const [isCollectionExplorerModalOpen, setIsCollectionExplorerModalOpen] = useState(false);
 
   const handleCollectionSelectedFromExplorer = (collectionId: number | null) => {
     onCollectionSelect(collectionId);
-    setIsCollectionExplorerModalOpen(false); // Close modal after selection
+    setIsCollectionExplorerModalOpen(false); 
+  };
+
+  const handleTagSelectedFromExplorer = (tag: string) => {
+    onSearch(`tag:${tag}`); // Use onSearch to trigger filtering
+    setIsTagExplorerModalOpen(false);
   };
 
   return (
@@ -88,7 +93,7 @@ export default function AppLayout({
             <span className="sr-only">Explorador de Colecciones</span>
           </Button>
           <Button variant="outline" size="icon" onClick={() => setIsTagExplorerModalOpen(true)} title="Explorador de Etiquetas">
-            <TagIcon className="h-5 w-5" />
+            <TagIconLucide className="h-5 w-5" /> {/* Changed Tag to TagIconLucide */}
             <span className="sr-only">Explorador de Etiquetas</span>
           </Button>
           <Button variant="outline" size="icon" onClick={() => setIsStatsModalOpen(true)} title="Ver Estadísticas">
@@ -102,7 +107,13 @@ export default function AppLayout({
         </main>
       </SidebarInset>
       {isStatsModalOpen && <StatisticsModal isOpen={isStatsModalOpen} onClose={() => setIsStatsModalOpen(false)} />}
-      {isTagExplorerModalOpen && <TagExplorerModal isOpen={isTagExplorerModalOpen} onClose={() => setIsTagExplorerModalOpen(false)} />}
+      {isTagExplorerModalOpen && (
+        <TagExplorerModal 
+          isOpen={isTagExplorerModalOpen} 
+          onClose={() => setIsTagExplorerModalOpen(false)} 
+          onTagSelectAndClose={handleTagSelectedFromExplorer} 
+        />
+      )}
       {isCollectionExplorerModalOpen && (
         <CollectionExplorerModal 
           isOpen={isCollectionExplorerModalOpen} 
