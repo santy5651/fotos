@@ -4,16 +4,17 @@
 import type { ImageMetadata } from '@/types';
 import ImageCard from './ImageCard';
 import { ScrollArea } from '../ui/scroll-area';
-import { AlertTriangle, FilterX, Inbox } from 'lucide-react'; // Added Inbox for general empty state
+import { AlertTriangle, FilterX, Inbox, Tag } from 'lucide-react'; // Added Tag icon
 
 interface ImageGridProps {
   images: ImageMetadata[];
   onUpdate: () => void;
   isReviewDuplicatesMode?: boolean;
   isShowUnassignedMode?: boolean;
+  isShowUntaggedMode?: boolean; // New prop
   selectedImageIds: Set<number>;
   onImageToggleSelection: (imageId: number) => void;
-  searchTerm?: string; // New prop
+  searchTerm?: string; 
 }
 
 export default function ImageGrid({ 
@@ -21,6 +22,7 @@ export default function ImageGrid({
   onUpdate, 
   isReviewDuplicatesMode, 
   isShowUnassignedMode,
+  isShowUntaggedMode, // New prop
   selectedImageIds,
   onImageToggleSelection,
   searchTerm
@@ -40,6 +42,14 @@ export default function ImageGrid({
             <div className="text-center text-muted-foreground py-10 flex flex-col items-center gap-2">
                 <FilterX className="w-10 h-10 text-muted-foreground" />
                 <p>No hay imágenes sin asignar a colecciones.</p>
+            </div>
+        );
+    }
+    if (isShowUntaggedMode) { // New message for untagged
+        return (
+            <div className="text-center text-muted-foreground py-10 flex flex-col items-center gap-2">
+                <Tag className="w-10 h-10 text-muted-foreground" /> {/* Using Tag icon */}
+                <p>No hay imágenes sin etiquetas.</p>
             </div>
         );
     }
@@ -70,7 +80,7 @@ export default function ImageGrid({
   }
 
   return (
-    <ScrollArea className="h-[calc(100vh-10rem)]"> {/* Adjusted height to account for potential top action bar */}
+    <ScrollArea className="h-[calc(100vh-10rem)]"> 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 p-1">
         {images.map((image) => (
           <ImageCard 

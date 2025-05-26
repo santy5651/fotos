@@ -3,11 +3,11 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, getHierarchicalCollections, addCollection as dbAddCollection, getCollections, deleteCollection as dbDeleteCollection, updateCollection as dbUpdateCollection, getUnassignedImageCount, getTotalImageCount } from '@/lib/db';
+import { db, getHierarchicalCollections, addCollection as dbAddCollection, getCollections, deleteCollection as dbDeleteCollection, updateCollection as dbUpdateCollection, getUnassignedImageCount, getTotalImageCount, getUntaggedImageCount } from '@/lib/db'; // Added getUntaggedImageCount
 import type { Collection } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, Folder, ChevronDown, ChevronRight, Edit2, Trash2, Loader2, FolderPlus, ListCollapse, AlertTriangle, Unlink } from 'lucide-react';
+import { Plus, Folder, ChevronDown, ChevronRight, Edit2, Trash2, Loader2, FolderPlus, ListCollapse, AlertTriangle, Unlink, Tags } from 'lucide-react'; // Added Tags
 import { useToast } from '@/hooks/use-toast';
 import {
   Dialog,
@@ -45,6 +45,8 @@ interface CollectionsPanelProps {
   isReviewDuplicatesMode: boolean;
   onToggleShowUnassigned: () => void;
   isShowUnassignedMode: boolean;
+  onToggleShowUntagged: () => void; // New prop
+  isShowUntaggedMode: boolean; // New prop
 }
 
 interface CollectionItemProps {
@@ -61,6 +63,8 @@ interface CollectionItemProps {
   onToggleReviewDuplicates: () => void;
   isShowUnassignedMode: boolean;
   onToggleShowUnassigned: () => void;
+  isShowUntaggedMode: boolean; // New prop
+  onToggleShowUntagged: () => void; // New prop
 }
 
 export default function CollectionsPanel({
@@ -69,6 +73,8 @@ export default function CollectionsPanel({
   isReviewDuplicatesMode,
   onToggleShowUnassigned,
   isShowUnassignedMode,
+  onToggleShowUntagged, // New prop
+  isShowUntaggedMode, // New prop
 }: CollectionsPanelProps) {
   const { toast } = useToast();
   const [newCollectionName, setNewCollectionName] = useState('');
@@ -86,6 +92,11 @@ export default function CollectionsPanel({
 
   const unassignedImageCount = useLiveQuery(
     async () => getUnassignedImageCount(),
+    [refreshKey], 0
+  );
+
+  const untaggedImageCount = useLiveQuery( // New live query
+    async () => getUntaggedImageCount(),
     [refreshKey], 0
   );
 
@@ -167,6 +178,8 @@ function CollectionItemView({
   onToggleReviewDuplicates,
   isShowUnassignedMode,
   onToggleShowUnassigned,
+  isShowUntaggedMode, // New prop
+  onToggleShowUntagged, // New prop
 }: CollectionItemProps) {
   const { toast } = useToast();
   const [isRenaming, setIsRenaming] = useState(false);
@@ -211,6 +224,7 @@ function CollectionItemView({
   const handleItemSelect = () => {
     if (isReviewDuplicatesMode) onToggleReviewDuplicates();
     if (isShowUnassignedMode) onToggleShowUnassigned();
+    if (isShowUntaggedMode) onToggleShowUntagged(); // Deactivate untagged mode
     onSelect(collection.id!);
   };
 
@@ -235,7 +249,7 @@ function CollectionItemView({
 
             <SidebarMenuButton
               onClick={handleItemSelect}
-              isActive={!isReviewDuplicatesMode && !isShowUnassignedMode && selectedCollectionId === collection.id}
+              isActive={!isReviewDuplicatesMode && !isShowUnassignedMode && !isShowUntaggedMode && selectedCollectionId === collection.id}
               className="flex-grow h-auto py-1 px-1.5 text-left"
             >
               <Folder size={16} className="mr-1 flex-shrink-0" />
@@ -244,7 +258,7 @@ function CollectionItemView({
             </SidebarMenuButton>
           </div>
 
-          <div className="flex items-center mt-1 pl-7"> {/* pl-7 to align with text after icon and expander */}
+          <div className="flex items-center mt-1 pl-7">
              <Button variant="ghost" size="icon" className="h-7 w-7 p-1" onClick={(e) => {e.stopPropagation(); onOpenCreateSubCollectionDialog(collection.id!)}} title={`Añadir sub-colección a ${collection.name}`}>
               <FolderPlus size={14} />
              </Button>
@@ -329,16 +343,28 @@ function CollectionItemView({
   const handleSelectAllImages = () => {
     if (isReviewDuplicatesMode) onToggleReviewDuplicates();
     if (isShowUnassignedMode) onToggleShowUnassigned();
+    if (isShowUntaggedMode) onToggleShowUntagged(); // Deactivate untagged mode
     handleSelectCollectionInternal(null);
   };
 
   const handleSelectReviewDuplicates = () => {
     if (!isReviewDuplicatesMode) onToggleReviewDuplicates();
+     if (isShowUnassignedMode) onToggleShowUnassigned(); // ensure others are off
+     if (isShowUntaggedMode) onToggleShowUntagged();
   };
 
   const handleSelectShowUnassigned = () => {
     if (!isShowUnassignedMode) onToggleShowUnassigned();
+     if (isReviewDuplicatesMode) onToggleReviewDuplicates(); // ensure others are off
+     if (isShowUntaggedMode) onToggleShowUntagged();
   };
+
+  const handleSelectShowUntagged = () => { // New handler
+    if (!isShowUntaggedMode) onToggleShowUntagged();
+     if (isReviewDuplicatesMode) onToggleReviewDuplicates(); // ensure others are off
+     if (isShowUnassignedMode) onToggleShowUnassigned();
+  };
+
 
   const doRefresh = useCallback(() => {
     setRefreshKey(prev => prev + 1);
@@ -377,13 +403,15 @@ function CollectionItemView({
           onToggleReviewDuplicates={onToggleReviewDuplicates}
           isShowUnassignedMode={isShowUnassignedMode}
           onToggleShowUnassigned={onToggleShowUnassigned}
+          isShowUntaggedMode={isShowUntaggedMode} // Pass new prop
+          onToggleShowUntagged={onToggleShowUntagged} // Pass new prop
         />
       </React.Fragment>
     ));
   };
 
 
-  if (!hierarchicalCollections || !imageCountsResult || !flatCollectionsForSelect || unassignedImageCount === undefined || totalImageCount === undefined) {
+  if (!hierarchicalCollections || !imageCountsResult || !flatCollectionsForSelect || unassignedImageCount === undefined || totalImageCount === undefined || untaggedImageCount === undefined) {
     return <div className="p-4"><Loader2 className="animate-spin" /> Cargando colecciones...</div>;
   }
 
@@ -496,10 +524,28 @@ function CollectionItemView({
           </SidebarMenuButton>
         </AliasedSidebarMenuItem>
 
+        <AliasedSidebarMenuItem> {/* New "Sin etiquetas" item */}
+          <SidebarMenuButton
+            onClick={handleSelectShowUntagged}
+            isActive={isShowUntaggedMode}
+            className="flex items-center justify-between w-full"
+          >
+            <div className="flex items-center">
+              <Tags size={16} className="mr-1 flex-shrink-0" />
+              Sin etiquetas
+            </div>
+            {untaggedImageCount > 0 && (
+              <Badge variant="secondary" className="ml-2 text-xs px-1.5 py-0.5">
+                {untaggedImageCount}
+              </Badge>
+            )}
+          </SidebarMenuButton>
+        </AliasedSidebarMenuItem>
+
         <AliasedSidebarMenuItem>
           <SidebarMenuButton
             onClick={handleSelectAllImages}
-            isActive={!isReviewDuplicatesMode && !isShowUnassignedMode && selectedCollectionId === null}
+            isActive={!isReviewDuplicatesMode && !isShowUnassignedMode && !isShowUntaggedMode && selectedCollectionId === null}
             className="flex items-center justify-between w-full"
           >
             Todas las Imágenes
@@ -515,5 +561,3 @@ function CollectionItemView({
     </SidebarGroup>
   );
 }
-
-    

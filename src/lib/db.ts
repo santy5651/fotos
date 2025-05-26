@@ -8,16 +8,33 @@ export class PicStackDexie extends Dexie {
 
   constructor() {
     super('PicStackDB');
+    this.version(4).stores({ // Incremented version for new index
+      images: '++id, name, *tags, createdAt, isFavorite, isProtected, *collectionIds, mimeType, isPotentialDuplicate, hasTags', // Added hasTags
+      collections: '++id, name, parentId, createdAt',
+    }).upgrade(async tx => {
+      console.log("Upgrading DB from version 3 to 4 (if applicable)");
+      // Add hasTags field to existing images
+      await tx.table("images").toCollection().modify(image => {
+        image.hasTags = !!(image.tags && image.tags.length > 0);
+      });
+    });
     this.version(3).stores({ 
       images: '++id, name, *tags, createdAt, isFavorite, isProtected, *collectionIds, mimeType, isPotentialDuplicate',
       collections: '++id, name, parentId, createdAt',
+    }).upgrade(tx => {
+      console.log("Upgrading DB from version 2 or 3 to 3 (if applicable)");
+      return tx.table("images").toCollection().modify(image => {
+        if (image.isPotentialDuplicate === undefined) {
+          image.isPotentialDuplicate = false;
+        }
+      });
     });
     this.version(2).stores({
       images: '++id, name, *tags, createdAt, isFavorite, *collectionIds, mimeType',
       collections: '++id, name, parentId, createdAt',
     }).upgrade(tx => {
-      console.log("Upgrading DB from version 2 to 3 (if applicable)");
-      return tx.table("images").toCollection().modify(image => {
+      console.log("Upgrading DB from version 1 to 2 (if applicable)");
+       return tx.table("images").toCollection().modify(image => {
         if (image.isPotentialDuplicate === undefined) {
           image.isPotentialDuplicate = false;
         }
@@ -26,8 +43,6 @@ export class PicStackDexie extends Dexie {
     this.version(1).stores({
       images: '++id, name, *tags, createdAt, isFavorite, *collectionIds',
       collections: '++id, name, parentId, createdAt',
-    }).upgrade(tx => {
-      console.log("Upgrading DB from version 1 to 2 (if applicable)");
     });
   }
 }
@@ -35,7 +50,7 @@ export class PicStackDexie extends Dexie {
 export const db = new PicStackDexie();
 
 // Image CRUD
-export const addImage = async (image: Omit<ImageMetadata, 'id' | 'createdAt' | 'syncStatus'> & { createdAt?: Date, syncStatus?: ImageMetadata['syncStatus'] }): Promise<number> => {
+export const addImage = async (image: Omit<ImageMetadata, 'id' | 'createdAt' | 'syncStatus' | 'hasTags'> & { createdAt?: Date, syncStatus?: ImageMetadata['syncStatus'] }): Promise<number> => {
   const newImage: ImageMetadata = {
     id: undefined, 
     name: image.name,
@@ -51,6 +66,7 @@ export const addImage = async (image: Omit<ImageMetadata, 'id' | 'createdAt' | '
     collectionIds: image.collectionIds || [],
     transform: image.transform || { rotate: 0 },
     isPotentialDuplicate: image.isPotentialDuplicate || false,
+    hasTags: !!(image.tags && image.tags.length > 0), // Set hasTags
   };
   return db.images.add(newImage);
 };
@@ -60,6 +76,7 @@ export const getImages = async (filter?: {
   searchTerm?: string;
   reviewDuplicates?: boolean;
   showUnassigned?: boolean;
+  showUntagged?: boolean; // New filter
 }): Promise<ImageMetadata[]> => {
   let imagesQuery: Dexie.Collection<ImageMetadata, number>;
 
@@ -70,20 +87,24 @@ export const getImages = async (filter?: {
       !img.isPotentialDuplicate &&
       (!img.collectionIds || img.collectionIds.length === 0)
     );
+  } else if (filter?.showUntagged) { // New filter condition
+    imagesQuery = db.images.filter(img => 
+      !img.isPotentialDuplicate &&
+      img.hasTags === false // Using the new indexed field
+    );
   } else if (filter?.collectionId !== null && filter?.collectionId !== undefined) {
     const selectedCollectionId = filter.collectionId;
     imagesQuery = db.images.filter(img =>
       !img.isPotentialDuplicate &&
       ((img.collectionIds && img.collectionIds.includes(selectedCollectionId)) ||
-       (!img.collectionIds || img.collectionIds.length === 0)) // Also include unassigned if a specific collection is chosen
+       (!img.collectionIds || img.collectionIds.length === 0)) 
     );
   } else { 
-    // "All Images" or no specific collection/mode filter (besides search term)
     imagesQuery = db.images.filter(img => !img.isPotentialDuplicate);
   }
 
   let sortedImages = await imagesQuery.sortBy('createdAt');
-  sortedImages.reverse(); // Show newest first by default
+  sortedImages.reverse(); 
 
   if (filter?.searchTerm && filter.searchTerm.trim() !== '') {
     const searchTerm = filter.searchTerm.trim();
@@ -95,7 +116,7 @@ export const getImages = async (filter?: {
       );
     } else {
       const term = searchTerm.toLowerCase();
-      const allCollections = await db.collections.toArray(); // Needed for searching by collection name
+      const allCollections = await db.collections.toArray();
 
       return sortedImages.filter(img => {
         if (img.name.toLowerCase().includes(term)) return true;
@@ -123,6 +144,10 @@ export const getImageById = async (id: number): Promise<ImageMetadata | undefine
 };
 
 export const updateImage = async (id: number, changes: Partial<ImageMetadata>): Promise<number> => {
+  // If tags are being updated, also update hasTags
+  if (changes.tags !== undefined) {
+    changes.hasTags = !!(changes.tags && changes.tags.length > 0);
+  }
   return db.images.update(id, changes);
 };
 
@@ -219,7 +244,7 @@ export const exportData = async (): Promise<{ metadataJson: string, imageFiles: 
   console.log(`[EXPORT DEBUG] Exporting: Found ${images.length} images and ${collections.length} collections.`);
 
   const metadata = {
-    version: 3, // Ensure this matches the current DB schema version if it's relevant for import logic
+    version: 4, // Current DB schema version for import logic
     collections: collections.map(c => {
       const { children, imageCount, ...serializableCollection } = c;
       return {
@@ -228,9 +253,7 @@ export const exportData = async (): Promise<{ metadataJson: string, imageFiles: 
       };
     }),
     images: images.map(img => {
-      // Sanitize original name for use in zip, ensure ID is part of filename for uniqueness
       const sanitizedOriginalName = (img.name || `image_no_name_${img.id || 'unknown'}`).replace(/[^a-zA-Z0-9_.-]/g, '_');
-      // Use a consistent extension based on mimeType if possible, fallback if not
       let extension = '.bin';
       if (img.mimeType && img.mimeType.includes('/')) {
           const typePart = img.mimeType.split('/')[1].toLowerCase();
@@ -241,12 +264,13 @@ export const exportData = async (): Promise<{ metadataJson: string, imageFiles: 
       const { file, dataUri, ...serializableImageBase } = img; 
       return {
         ...serializableImageBase,
-        fileNameInZip: fileNameInZip, // Store the name used in the zip for re-linking
+        fileNameInZip: fileNameInZip,
         createdAt: img.createdAt ? img.createdAt.toISOString() : new Date().toISOString(),
-        tags: img.tags || [],
-        collectionIds: img.collectionIds || [],
+        tags: img.tags || [], // ensure tags is an array
+        collectionIds: img.collectionIds || [], // ensure collectionIds is an array
         transform: img.transform || { rotate: 0 },
         isPotentialDuplicate: img.isPotentialDuplicate || false,
+        hasTags: img.hasTags, // Export hasTags
       };
     }),
   };
@@ -254,7 +278,6 @@ export const exportData = async (): Promise<{ metadataJson: string, imageFiles: 
   const imageFiles = images
     .filter(img => img.file instanceof Blob)
     .map(img => {
-        // Reconstruct filename exactly as it will be in metadata.images.fileNameInZip
         const sanitizedOriginalName = (img.name || `image_no_name_${img.id || 'unknown'}`).replace(/[^a-zA-Z0-9_.-]/g, '_');
         let extension = '.bin';
         if (img.mimeType && img.mimeType.includes('/')) {
@@ -307,11 +330,10 @@ export const importData = async (metadataJson: string, files: File[]): Promise<s
     for (const collToImport of importedCollectionsRaw) {
       const oldCollectionId = collToImport.id;
 
-      // Constructing the collection entry more explicitly
       const newCollectionEntry: Omit<Collection, 'id' | 'children' | 'imageCount'> = {
         name: collToImport.name || "Unnamed Collection",
         createdAt: collToImport.createdAt ? new Date(collToImport.createdAt) : new Date(),
-        parentId: null, // Set to null initially, will be updated in Pass 2
+        parentId: null, 
       };
 
       if (!(newCollectionEntry.createdAt instanceof Date) || isNaN(newCollectionEntry.createdAt.getTime())) {
@@ -323,7 +345,7 @@ export const importData = async (metadataJson: string, files: File[]): Promise<s
 
       try {
         const newGeneratedDbId = await db.collections.add(newCollectionEntry as Collection);
-        if (oldCollectionId !== undefined && oldCollectionId !== null) { // Ensure oldCollectionId is valid before mapping
+        if (oldCollectionId !== undefined && oldCollectionId !== null) { 
           oldToNewCollectionIdMap.set(oldCollectionId, newGeneratedDbId);
         }
         collectionParentImportData.push({ newDbId: newGeneratedDbId, oldParentId: collToImport.parentId ?? null });
@@ -375,21 +397,24 @@ export const importData = async (metadataJson: string, files: File[]): Promise<s
           .map((oldCollId: number) => oldToNewCollectionIdMap.get(oldCollId))
           .filter((newCollId?: number): newCollId is number => newCollId !== undefined && newCollId !== null);
         console.log(`[IMPORT DEBUG DB] Mapped collection IDs for "${imgJson.name}": Old ${JSON.stringify(imgJson.collectionIds)}, New ${JSON.stringify(newImageCollectionIds)}`);
+        
+        const importedTags = Array.isArray(imgJson.tags) ? imgJson.tags : [];
 
         const imageToAdd: Omit<ImageMetadata, 'id'> = {
           name: imgJson.name || imageFile.name,
           file: imageFile,
-          tags: Array.isArray(imgJson.tags) ? imgJson.tags : [],
+          tags: importedTags,
           width: typeof imgJson.width === 'number' ? imgJson.width : 0,
           height: typeof imgJson.height === 'number' ? imgJson.height : 0,
           isFavorite: typeof imgJson.isFavorite === 'boolean' ? imgJson.isFavorite : false,
           isProtected: typeof imgJson.isProtected === 'boolean' ? imgJson.isProtected : false,
           createdAt: imgJson.createdAt ? new Date(imgJson.createdAt) : new Date(),
-          mimeType: imageFile.type || imgJson.mimeType || 'application/octet-stream', // Ensure a fallback mimeType
+          mimeType: imageFile.type || imgJson.mimeType || 'application/octet-stream', 
           syncStatus: imgJson.syncStatus || 'local',
           collectionIds: newImageCollectionIds,
           transform: imgJson.transform && typeof imgJson.transform.rotate === 'number' ? imgJson.transform : { rotate: 0 },
           isPotentialDuplicate: typeof imgJson.isPotentialDuplicate === 'boolean' ? imgJson.isPotentialDuplicate : false,
+          hasTags: typeof imgJson.hasTags === 'boolean' ? imgJson.hasTags : (importedTags.length > 0), // Import or derive hasTags
         };
 
         if (!(imageToAdd.createdAt instanceof Date) || isNaN(imageToAdd.createdAt.getTime())) {
@@ -442,6 +467,13 @@ export const getUnassignedImageCount = async (): Promise<number> => {
   ).count();
 };
 
+export const getUntaggedImageCount = async (): Promise<number> => {
+  return db.images.filter(img => 
+    !img.isPotentialDuplicate &&
+    img.hasTags === false
+  ).count();
+};
+
 export const getImagesPerCollection = async (): Promise<{ name: string, count: number }[]> => {
   const collections = await db.collections.toArray();
   const counts = await Promise.all(
@@ -490,3 +522,4 @@ export const bulkAddImagesToCollections = async (imageIds: number[], targetColle
     }
   });
 };
+

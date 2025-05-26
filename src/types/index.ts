@@ -13,10 +13,11 @@ export interface ImageMetadata {
   syncStatus: 'local' | 'pending' | 'synced'; // For future use
   collectionIds: number[]; // IDs of collections this image belongs to
   dataUri?: string; // Temporary data URI for AI processing or display
-  transform?: { // For visual transformations on image card - transient for now
+  transform?: { 
     rotate: number; // degrees
   };
   isPotentialDuplicate?: boolean; // Flag for potential duplicates based on filename
+  hasTags?: boolean; // True if tags array is not empty, for easier querying
 }
 
 export interface Collection {
@@ -28,4 +29,3 @@ export interface Collection {
   imageCount?: number; 
   children?: Collection[]; 
 }
-

@@ -16,6 +16,7 @@ export default function HomePage() {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [reviewDuplicatesMode, setReviewDuplicatesMode] = useState<boolean>(false);
   const [showUnassignedMode, setShowUnassignedMode] = useState<boolean>(false);
+  const [showUntaggedMode, setShowUntaggedMode] = useState<boolean>(false); // New state
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedImageIds, setSelectedImageIds] = useState<Set<number>>(new Set());
   const [isBulkAddToCollectionDialogOpen, setIsBulkAddToCollectionDialogOpen] = useState(false);
@@ -24,9 +25,10 @@ export default function HomePage() {
     async () => {
       const filter: any = {
         reviewDuplicates: reviewDuplicatesMode,
-        showUnassigned: showUnassignedMode
+        showUnassigned: showUnassignedMode,
+        showUntagged: showUntaggedMode, // Pass new filter
       };
-      if (!reviewDuplicatesMode && !showUnassignedMode && currentCollectionId !== null) {
+      if (!reviewDuplicatesMode && !showUnassignedMode && !showUntaggedMode && currentCollectionId !== null) {
         filter.collectionId = currentCollectionId;
       }
       if (searchTerm) {
@@ -34,7 +36,7 @@ export default function HomePage() {
       }
       return getImages(filter);
     },
-    [currentCollectionId, searchTerm, refreshKey, reviewDuplicatesMode, showUnassignedMode],
+    [currentCollectionId, searchTerm, refreshKey, reviewDuplicatesMode, showUnassignedMode, showUntaggedMode], // Add showUntaggedMode to dependencies
     []
   );
 
@@ -47,9 +49,10 @@ export default function HomePage() {
     setCurrentCollectionId(collectionId);
     if (reviewDuplicatesMode) setReviewDuplicatesMode(false);
     if (showUnassignedMode) setShowUnassignedMode(false);
-    setSearchTerm(''); // Clear search term when changing collection via sidebar
+    if (showUntaggedMode) setShowUntaggedMode(false); // Deactivate untagged mode
+    setSearchTerm(''); 
     setSelectedImageIds(new Set()); 
-  }, [reviewDuplicatesMode, showUnassignedMode]);
+  }, [reviewDuplicatesMode, showUnassignedMode, showUntaggedMode]);
 
   const handleUploadComplete = useCallback(() => {
     setRefreshKey(prev => prev + 1);
@@ -65,7 +68,8 @@ export default function HomePage() {
     if (newMode) {
       setCurrentCollectionId(null);
       setShowUnassignedMode(false);
-      setSearchTerm(''); // Clear search term
+      setShowUntaggedMode(false); // Deactivate untagged mode
+      setSearchTerm(''); 
     }
     setSelectedImageIds(new Set()); 
   }, [reviewDuplicatesMode]);
@@ -76,10 +80,24 @@ export default function HomePage() {
     if (newMode) {
       setCurrentCollectionId(null);
       setReviewDuplicatesMode(false);
-      setSearchTerm(''); // Clear search term
+      setShowUntaggedMode(false); // Deactivate untagged mode
+      setSearchTerm(''); 
     }
     setSelectedImageIds(new Set()); 
   }, [showUnassignedMode]);
+
+  const toggleShowUntaggedMode = useCallback(() => { // New handler
+    const newMode = !showUntaggedMode;
+    setShowUntaggedMode(newMode);
+    if (newMode) {
+      setCurrentCollectionId(null);
+      setReviewDuplicatesMode(false);
+      setShowUnassignedMode(false);
+      setSearchTerm('');
+    }
+    setSelectedImageIds(new Set());
+  }, [showUntaggedMode]);
+
 
   const handleToggleImageSelection = useCallback((imageId: number) => {
     setSelectedImageIds(prevSelectedIds => {
@@ -127,6 +145,8 @@ export default function HomePage() {
       isReviewDuplicatesMode={reviewDuplicatesMode}
       onToggleShowUnassigned={toggleShowUnassignedMode}
       isShowUnassignedMode={showUnassignedMode}
+      onToggleShowUntagged={toggleShowUntaggedMode} // Pass new prop
+      isShowUntaggedMode={showUntaggedMode} // Pass new prop
     >
       {selectedImageIds.size > 0 && (
         <div className="sticky top-0 z-[5] bg-background/80 backdrop-blur-sm p-2 mb-2 border-b rounded-md shadow-sm flex items-center justify-between gap-2">
@@ -151,7 +171,6 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* Contador de imágenes en la vista actual */}
       {images && images.length > 0 && (
         <div className="text-sm text-muted-foreground py-1 px-1 text-center mb-2">
           {images.length} imagen{images.length === 1 ? '' : 'es'} en la vista actual.
@@ -163,9 +182,10 @@ export default function HomePage() {
         onUpdate={handleImageUpdate}
         isReviewDuplicatesMode={reviewDuplicatesMode}
         isShowUnassignedMode={showUnassignedMode}
+        isShowUntaggedMode={showUntaggedMode} // Pass new prop
         selectedImageIds={selectedImageIds}
         onImageToggleSelection={handleToggleImageSelection}
-        searchTerm={searchTerm} // Pass searchTerm to ImageGrid
+        searchTerm={searchTerm} 
       />
       {isBulkAddToCollectionDialogOpen && (
         <BulkAddToCollectionDialog

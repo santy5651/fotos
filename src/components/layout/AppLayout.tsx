@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { FileImage, Settings, BarChartBig, Tag as TagIconLucide, FolderSearch } from "lucide-react"; // Renamed Tag to TagIconLucide
+import { FileImage, Settings, BarChartBig, Tag as TagIconLucide, FolderSearch } from "lucide-react";
 import CollectionsPanel from '@/components/collections/CollectionsPanel';
 import ImageUpload from '@/components/image/ImageUpload';
 import SearchBar from '@/components/search/SearchBar';
@@ -32,6 +32,8 @@ interface AppLayoutProps {
   isReviewDuplicatesMode: boolean;
   onToggleShowUnassigned: () => void; 
   isShowUnassignedMode: boolean; 
+  onToggleShowUntagged: () => void; // New prop
+  isShowUntaggedMode: boolean; // New prop
 }
 
 export default function AppLayout({ 
@@ -43,6 +45,8 @@ export default function AppLayout({
   isReviewDuplicatesMode,
   onToggleShowUnassigned, 
   isShowUnassignedMode, 
+  onToggleShowUntagged, // New prop
+  isShowUntaggedMode, // New prop
 }: AppLayoutProps) {
   const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
   const [isTagExplorerModalOpen, setIsTagExplorerModalOpen] = useState(false);
@@ -54,7 +58,7 @@ export default function AppLayout({
   };
 
   const handleTagSelectedFromExplorer = (tag: string) => {
-    onSearch(`tag:${tag}`); // Use onSearch to trigger filtering
+    onSearch(`tag:${tag}`); 
     setIsTagExplorerModalOpen(false);
   };
 
@@ -73,6 +77,8 @@ export default function AppLayout({
               isReviewDuplicatesMode={isReviewDuplicatesMode}
               onToggleShowUnassigned={onToggleShowUnassigned} 
               isShowUnassignedMode={isShowUnassignedMode} 
+              onToggleShowUntagged={onToggleShowUntagged} // Pass new prop
+              isShowUntaggedMode={isShowUntaggedMode} // Pass new prop
             />
           </ScrollArea>
         </SidebarContent>
@@ -93,7 +99,7 @@ export default function AppLayout({
             <span className="sr-only">Explorador de Colecciones</span>
           </Button>
           <Button variant="outline" size="icon" onClick={() => setIsTagExplorerModalOpen(true)} title="Explorador de Etiquetas">
-            <TagIconLucide className="h-5 w-5" /> {/* Changed Tag to TagIconLucide */}
+            <TagIconLucide className="h-5 w-5" /> 
             <span className="sr-only">Explorador de Etiquetas</span>
           </Button>
           <Button variant="outline" size="icon" onClick={() => setIsStatsModalOpen(true)} title="Ver Estadísticas">
