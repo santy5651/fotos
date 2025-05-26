@@ -5,9 +5,9 @@ import type { ImageMetadata, Collection } from '@/types';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Heart, Shield, Trash2, RotateCcw, RotateCw, Tag, Loader2, ZoomIn, Edit3, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Heart, Shield, Trash2, RotateCcw, RotateCw, Tag, Loader2, ZoomIn, Edit3, CheckCircle2, AlertTriangle, Wand2 } from 'lucide-react'; // Added Wand2
 import { useToast } from '@/hooks/use-toast';
-import { updateImage, deleteImage, db } from '@/lib/db';
+import { updateImage, deleteImage, db, blobToDataURL } from '@/lib/db'; // Added blobToDataURL
 import NextImage from 'next/image';
 import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -16,8 +16,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import AddToCollectionDialog from '@/components/collections/AddToCollectionDialog';
 import ImageZoomModal from './ImageZoomModal';
 import RenameImageDialog from './RenameImageDialog';
-import { Checkbox } from '@/components/ui/checkbox'; // Import Checkbox
+import { Checkbox } from '@/components/ui/checkbox'; 
 import { cn } from '@/lib/utils';
+import { tagImage } from '@/ai/flows/tag-image'; // New import
 
 interface ImageCardProps {
   image: ImageMetadata;
@@ -33,6 +34,7 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
   const [isAddToCollectionDialogOpen, setIsAddToCollectionDialogOpen] = useState(false);
   const [isZoomModalOpen, setIsZoomModalOpen] = useState(false);
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
+  const [isRetagging, setIsRetagging] = useState(false); // New state for retagging loader
 
 
   useEffect(() => {
@@ -106,6 +108,30 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
     onUpdate();
   }
 
+  const handleRegenerateTags = async () => {
+    if (!image.id || !image.file) {
+      toast({ variant: "destructive", title: "Error", description: "Información de imagen faltante para regenerar etiquetas." });
+      return;
+    }
+    setIsRetagging(true);
+    try {
+      const dataUri = await blobToDataURL(image.file);
+      const aiResult = await tagImage({ photoDataUri: dataUri });
+      await updateImage(image.id, { tags: aiResult.tags, hasTags: aiResult.tags.length > 0 });
+      toast({ title: "Etiquetas Regeneradas", description: `Se generaron nuevas etiquetas para ${image.name}.` });
+      onUpdate(); 
+    } catch (error) {
+      console.error("Error regenerating tags:", error);
+      toast({
+        variant: "destructive",
+        title: "Fallo al Regenerar Etiquetas",
+        description: `No se pudieron generar etiquetas para ${image.name}. ${ (error as Error).message.includes('429') ? 'Límite de API alcanzado. Intenta más tarde.' : (error as Error).message }`
+      });
+    } finally {
+      setIsRetagging(false);
+    }
+  };
+
 
   if (!imageUrl) {
     return (
@@ -137,7 +163,7 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
               alt={image.name}
               fill
               style={{
-                objectFit: 'contain',
+                objectFit: 'contain', // Changed from cover to contain
                 transform: `rotate(${currentRotation}deg)`
               }}
               className="transition-transform duration-300 ease-in-out group-hover:scale-105"
@@ -196,13 +222,13 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
 
         <CardHeader className="pt-4 pb-2 px-4">
           <CardTitle className="text-sm font-medium truncate" title={image.name}>{image.name}</CardTitle>
-          {image.isPotentialDuplicate && (
+          
+          {image.isPotentialDuplicate ? (
             <Badge variant="destructive" className="mt-1 w-fit">
               <AlertTriangle className="mr-1 h-3 w-3" />
-              Potential Duplicate
+              Potencial Duplicado
             </Badge>
-          )}
-          {image.tags && image.tags.length > 0 && (
+          ) : image.hasTags ? (
             <>
               <div className="flex flex-wrap gap-1 mt-1">
                 {image.tags.slice(0, 2).map(tag => (
@@ -219,7 +245,26 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
                 </div>
               )}
             </>
+          ) : (
+            <div className="mt-1 flex items-center">
+              <span className="text-xs text-muted-foreground italic mr-2">No hay etiquetas.</span>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleRegenerateTags} 
+                disabled={isRetagging}
+                className="h-7 px-2 py-1 text-xs"
+              >
+                {isRetagging ? (
+                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                ) : (
+                  <Wand2 className="mr-1 h-3 w-3" />
+                )}
+                Regenerar
+              </Button>
+            </div>
           )}
+
           {image.collectionIds && image.collectionIds.length > 0 && !image.isPotentialDuplicate && (
             <>
               {imageCollections === undefined && (
@@ -275,7 +320,7 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
               </AlertDialog>
             </div>
           ) : (
-            <AlertDialog>
+             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" disabled={image.isProtected} aria-label="Delete image">
                   <Trash2 className="h-4 w-4" />
