@@ -6,9 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { UploadCloud, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { addImage, blobToDataURL, checkIfImageExistsByName } from '@/lib/db'; 
+import { addImage, blobToDataURL, checkIfImageExistsByName } from '@/lib/db';
 import type { ImageMetadata } from '@/types';
-import { tagImage } from '@/ai/flows/tag-image'; 
+import { tagImage } from '@/ai/flows/tag-image';
 
 interface ImageUploadProps {
   onUploadComplete: () => void;
@@ -25,19 +25,21 @@ export default function ImageUpload({ onUploadComplete }: ImageUploadProps) {
     setIsUploading(true);
     let uploadedCount = 0;
     let flaggedCount = 0;
+    let taggingFailedCount = 0;
     const totalFiles = files.length;
 
     for (const file of Array.from(files)) {
       let isPotentialDuplicate = false;
+      let tags: string[] = [];
       try {
         // 0. Check for duplicates by name (non-flagged images)
         const isExisting = await checkIfImageExistsByName(file.name);
         if (isExisting) {
           isPotentialDuplicate = true;
-          toast({ 
-            variant: "default", 
-            title: "Potential Duplicate", 
-            description: `Image "${file.name}" has the same name as an existing image. It has been flagged for review.` 
+          toast({
+            variant: "default",
+            title: "Potencial Duplicado",
+            description: `La imagen "${file.name}" tiene el mismo nombre que una imagen existente. Ha sido marcada para revisión.`
           });
           console.warn(`Potential duplicate file flagged: ${file.name}`);
           flaggedCount++;
@@ -48,22 +50,23 @@ export default function ImageUpload({ onUploadComplete }: ImageUploadProps) {
 
         // 2. Convert to data URI for AI
         const dataUri = await blobToDataURL(file);
-        
+
         // 3. AI Tagging
-        let tags: string[] = [];
         try {
           const aiResult = await tagImage({ photoDataUri: dataUri });
           tags = aiResult.tags;
           if (!isPotentialDuplicate) { // Don't toast AI tags for duplicates to reduce noise
-            toast({ title: "AI Tagging", description: `Tags generated for ${file.name}: ${tags.join(', ')}` });
+            toast({ title: "Etiquetado IA", description: `Etiquetas generadas para ${file.name}: ${tags.join(', ')}` });
           }
         } catch (aiError) {
+          taggingFailedCount++;
           console.error("AI tagging error:", aiError);
-          toast({ variant: "destructive", title: "AI Tagging Failed", description: `Could not generate tags for ${file.name}.` });
+          toast({ variant: "destructive", title: "Fallo en Etiquetado IA", description: `No se pudieron generar etiquetas para ${file.name}. La imagen se guardará sin etiquetas.` });
+          // tags will remain an empty array
         }
 
         // 4. Prepare metadata
-        const imageMetadata: Omit<ImageMetadata, 'id' | 'createdAt' | 'syncStatus' | 'file'> & { file: File } = {
+        const imageMetadata: Omit<ImageMetadata, 'id' | 'createdAt' | 'syncStatus' | 'file' | 'hasTags'> & { file: File, hasTags: boolean } = {
           name: file.name,
           file: file,
           tags: tags,
@@ -72,33 +75,39 @@ export default function ImageUpload({ onUploadComplete }: ImageUploadProps) {
           isFavorite: false,
           isProtected: false,
           mimeType: file.type,
-          collectionIds: [], 
+          collectionIds: [],
           isPotentialDuplicate: isPotentialDuplicate, // Set the flag
+          hasTags: tags.length > 0,
         };
-        
-        await addImage(imageMetadata as any); 
+
+        await addImage(imageMetadata as any);
         uploadedCount++;
-        if (!isPotentialDuplicate) {
-            toast({ title: "Upload Success", description: `${file.name} uploaded and processed.` });
+        if (!isPotentialDuplicate && tags.length > 0) { // Only success toast if not duplicate and tagging was successful
+            toast({ title: "Subida Exitosa", description: `${file.name} subida y procesada.` });
+        } else if (!isPotentialDuplicate && tags.length === 0 && taggingFailedCount > 0) {
+            // Handled by the AI tagging failed toast already
         }
 
 
       } catch (error) {
         console.error("Upload error:", error);
-        toast({ variant: "destructive", title: "Upload Failed", description: `Could not upload ${file.name}. ${(error as Error).message}` });
+        toast({ variant: "destructive", title: "Fallo en Subida", description: `No se pudo subir ${file.name}. ${(error as Error).message}` });
       }
     }
     setIsUploading(false);
     if (uploadedCount > 0) {
       onUploadComplete();
     }
-    
-    let summaryDescription = `${uploadedCount}/${totalFiles} images processed.`;
+
+    let summaryDescription = `${uploadedCount}/${totalFiles} imágenes procesadas.`;
     if (flaggedCount > 0) {
-        summaryDescription += ` ${flaggedCount} potential duplicate(s) flagged for review.`;
+        summaryDescription += ` ${flaggedCount} potencial(es) duplicado(s) marcado(s) para revisión.`;
     }
-    toast({ title: "Upload Finished", description: summaryDescription, duration: 7000 });
-    
+    if (taggingFailedCount > 0) {
+        summaryDescription += ` ${taggingFailedCount} etiquetado(s) de IA fallido(s).`;
+    }
+    toast({ title: "Subida Finalizada", description: summaryDescription, duration: 7000 });
+
     event.target.value = '';
   };
 
@@ -132,7 +141,7 @@ export default function ImageUpload({ onUploadComplete }: ImageUploadProps) {
           ) : (
             <UploadCloud className="mr-2 h-4 w-4" />
           )}
-          Upload
+          Subir
           <Input
             id="image-upload"
             type="file"
@@ -147,4 +156,3 @@ export default function ImageUpload({ onUploadComplete }: ImageUploadProps) {
     </div>
   );
 }
-
