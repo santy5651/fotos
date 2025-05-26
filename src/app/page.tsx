@@ -131,7 +131,7 @@ export default function HomePage() {
       {selectedImageIds.size > 0 && (
         <div className="sticky top-0 z-[5] bg-background/80 backdrop-blur-sm p-2 mb-2 border-b rounded-md shadow-sm flex items-center justify-between gap-2">
           <p className="text-sm font-medium">
-            {selectedImageIds.size} imagen(es) seleccionada(s)
+            {selectedImageIds.size} imagen{selectedImageIds.size === 1 ? '' : 'es'} seleccionada{selectedImageIds.size === 1 ? '' : 's'}
           </p>
           <div className="flex items-center gap-2">
             {images && selectedImageIds.size !== images.length && (
@@ -150,6 +150,14 @@ export default function HomePage() {
           </div>
         </div>
       )}
+
+      {/* Contador de imágenes en la vista actual */}
+      {images && images.length > 0 && (
+        <div className="text-sm text-muted-foreground py-1 px-1 text-center mb-2">
+          {images.length} imagen{images.length === 1 ? '' : 'es'} en la vista actual.
+        </div>
+      )}
+      
       <ImageGrid
         images={images}
         onUpdate={handleImageUpdate}
