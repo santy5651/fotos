@@ -12,11 +12,12 @@ export class PicStackDexie extends Dexie {
       images: '++id, name, *tags, createdAt, isFavorite, isProtected, *collectionIds, mimeType, isPotentialDuplicate, hasTags, hasDescription', 
       collections: '++id, name, parentId, createdAt',
     });
+    // Keep previous versions for upgrade paths if needed by users with older DBs
     this.version(5).stores({
       images: '++id, name, *tags, createdAt, isFavorite, isProtected, *collectionIds, mimeType, isPotentialDuplicate, hasTags, hasDescription',
       collections: '++id, name, parentId, createdAt',
     }).upgrade(async tx => {
-      console.log("Upgrading DB from version 4 to 5 (if applicable)");
+      console.log("Upgrading DB from version 4 to 5 (if applicable for hasDescription)");
       await tx.table("images").toCollection().modify(image => {
         if (image.hasDescription === undefined) {
             image.hasDescription = !!(image.description && image.description.trim() !== "");
@@ -27,16 +28,18 @@ export class PicStackDexie extends Dexie {
       images: '++id, name, *tags, createdAt, isFavorite, isProtected, *collectionIds, mimeType, isPotentialDuplicate, hasTags',
       collections: '++id, name, parentId, createdAt',
     }).upgrade(async tx => {
-      console.log("Upgrading DB from version 3 to 4 (if applicable)");
+      console.log("Upgrading DB from version 3 to 4 (if applicable for hasTags)");
       await tx.table("images").toCollection().modify(image => {
-        image.hasTags = !!(image.tags && image.tags.length > 0);
+        if (image.hasTags === undefined) {
+          image.hasTags = !!(image.tags && image.tags.length > 0);
+        }
       });
     });
     this.version(3).stores({ 
       images: '++id, name, *tags, createdAt, isFavorite, isProtected, *collectionIds, mimeType, isPotentialDuplicate',
       collections: '++id, name, parentId, createdAt',
     }).upgrade(tx => {
-      console.log("Upgrading DB from version 2 or 3 to 3 (if applicable)");
+      console.log("Upgrading DB from version 2 to 3 (if applicable for isPotentialDuplicate)");
       return tx.table("images").toCollection().modify(image => {
         if (image.isPotentialDuplicate === undefined) {
           image.isPotentialDuplicate = false;
@@ -44,14 +47,12 @@ export class PicStackDexie extends Dexie {
       });
     });
     this.version(2).stores({
-      images: '++id, name, *tags, createdAt, isFavorite, *collectionIds, mimeType',
+      images: '++id, name, *tags, createdAt, isFavorite, *collectionIds, mimeType', // isProtected was added in v3 implicitly by store definition if users jumped
       collections: '++id, name, parentId, createdAt',
     }).upgrade(tx => {
-      console.log("Upgrading DB from version 1 to 2 (if applicable)");
        return tx.table("images").toCollection().modify(image => {
-        if (image.isPotentialDuplicate === undefined) {
-          image.isPotentialDuplicate = false;
-        }
+        if (image.isPotentialDuplicate === undefined) image.isPotentialDuplicate = false;
+        if (image.isProtected === undefined) image.isProtected = false; // Ensure isProtected exists
       });
     });
     this.version(1).stores({
@@ -93,7 +94,7 @@ export const getImages = async (filter?: {
   reviewDuplicates?: boolean;
   showUnassigned?: boolean;
   showUntagged?: boolean;
-  showUndescribed?: boolean; // New filter
+  showUndescribed?: boolean;
 }): Promise<ImageMetadata[]> => {
   let finalImages: ImageMetadata[] = [];
 
@@ -105,6 +106,7 @@ export const getImages = async (filter?: {
     const duplicateNames = new Set(potentialDuplicatesFlagged.map(img => img.name.toLowerCase()));
     
     finalImages = await db.images.filter(img => duplicateNames.has(img.name.toLowerCase())).toArray();
+
   } else {
     let imagesQuery: Dexie.Collection<ImageMetadata, number>;
 
@@ -118,7 +120,7 @@ export const getImages = async (filter?: {
         !img.isPotentialDuplicate &&
         img.hasTags === false
       );
-    } else if (filter?.showUndescribed) { // New filter condition
+    } else if (filter?.showUndescribed) { 
       imagesQuery = db.images.filter(img => 
         !img.isPotentialDuplicate &&
         img.hasDescription === false
@@ -147,22 +149,15 @@ export const getImages = async (filter?: {
       if (nameA < nameB) return -1;
       if (nameA > nameB) return 1;
       
-      // If names are equal, sort by ID (older ID first)
-      if ((a.id || 0) < (b.id || 0)) return -1;
+      if ((a.id || 0) < (b.id || 0)) return -1; // Older ID first
       if ((a.id || 0) > (b.id || 0)) return 1;
-      
-      // Fallback to creation date if IDs somehow clash or are missing (unlikely for persisted data)
-      if (a.createdAt.getTime() < b.createdAt.getTime()) return -1;
-      if (a.createdAt.getTime() > b.createdAt.getTime()) return 1;
-      
+            
       return 0; 
     });
   } else {
      finalImages.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   }
 
-
-  // Apply search term if present, but not if in reviewDuplicates mode (already handled by name grouping)
   if (!filter?.reviewDuplicates && filter?.searchTerm && filter.searchTerm.trim() !== '') {
     const searchTerm = filter.searchTerm.trim();
     const termLower = searchTerm.toLowerCase();
@@ -271,67 +266,76 @@ export const updateCollection = async (id: number, changes: Partial<Collection>)
 };
 
 export const deleteCollection = async (id: number): Promise<void> => {
-  console.log(`[DB DEBUG] Attempting to delete collection ID: ${id}`);
   const imagesInCollection = await db.images.where('collectionIds').equals(id).toArray();
-  console.log(`[DB DEBUG] Found ${imagesInCollection.length} images in collection ${id}`);
   for (const img of imagesInCollection) {
     if (img.id !== undefined && img.collectionIds) {
       const updatedCollectionIds = img.collectionIds.filter(cid => cid !== id);
       await db.images.update(img.id, { collectionIds: updatedCollectionIds });
-      console.log(`[DB DEBUG] Updated image ${img.id}, removed collectionId ${id}. New collectionIds: ${updatedCollectionIds}`);
     }
   }
 
   const subCollections = await db.collections.where('parentId').equals(id).toArray();
-  console.log(`[DB DEBUG] Found ${subCollections.length} sub-collections for collection ${id}`);
   for (const subColl of subCollections) {
     if (subColl.id !== undefined) {
       await db.collections.update(subColl.id, { parentId: null });
-      console.log(`[DB DEBUG] Re-parented sub-collection ${subColl.id} to root.`);
     }
   }
   await db.collections.delete(id);
-  console.log(`[DB DEBUG] Deleted collection ${id} itself.`);
 };
 
 
 // Data Management
 export const exportData = async (): Promise<{ metadataJson: string, imageFiles: { name: string, blob: Blob }[] }> => {
-  console.log("[EXPORT DEBUG] Exporting: Fetching all images and collections from DB...");
   const images = await db.images.toArray();
   const collections = await db.collections.toArray();
-  console.log(`[EXPORT DEBUG] Exporting: Found ${images.length} images and ${collections.length} collections.`);
 
   const metadata = {
-    version: 6, // Updated version
+    version: 6, 
     collections: collections.map(c => {
       const { children, imageCount, ...serializableCollection } = c; 
       return {
         ...serializableCollection,
-        createdAt: c.createdAt ? c.createdAt.toISOString() : new Date().toISOString(),
+        id: c.id, // Ensure ID is exported
+        name: c.name || "Unnamed Collection",
+        parentId: c.parentId === undefined ? null : c.parentId, // Ensure parentId is null if undefined
+        createdAt: (c.createdAt ? new Date(c.createdAt) : new Date()).toISOString(),
       };
     }),
     images: images.map(img => {
-      const sanitizedOriginalName = (img.name || `image_no_name_${img.id || 'unknown'}`).replace(/[^a-zA-Z0-9_.-]/g, '_');
+      const sanitizedOriginalName = (img.name || `image_no_name_${img.id || 'unknown'}`).replace(/[^a-zA-Z0-9_.\-]/g, '_');
       let extension = '.bin'; 
       if (img.mimeType && img.mimeType.includes('/')) {
           const typePart = img.mimeType.split('/')[1].toLowerCase();
-          extension = `.${typePart === 'jpeg' ? 'jpg' : typePart}`;
+          // common image extensions
+          const commonExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'tiff'];
+          if (commonExtensions.includes(typePart)) {
+            extension = `.${typePart === 'jpeg' ? 'jpg' : typePart}`;
+          } else {
+            extension = `.${typePart.substring(0,3)}`; // fallback for less common types
+          }
       }
       const fileNameInZip = `img_${img.id}_${sanitizedOriginalName}${extension}`;
-
-      const { file, dataUri, ...serializableImageBase } = img; 
+      
+      // Explicitly select fields for export and provide defaults for safety
+      const { file, dataUri, ...baseImage } = img; // Exclude file and dataUri
       return {
-        ...serializableImageBase, 
-        fileNameInZip: fileNameInZip, 
-        createdAt: img.createdAt ? img.createdAt.toISOString() : new Date().toISOString(),
-        tags: img.tags || [], 
+        ...baseImage, // Includes id, name, width, height, mimeType, syncStatus
+        name: img.name || "Unnamed Image",
+        tags: img.tags || [],
         description: img.description || "",
+        width: img.width || 0,
+        height: img.height || 0,
+        isFavorite: img.isFavorite || false,
+        isProtected: img.isProtected || false,
+        createdAt: (img.createdAt ? new Date(img.createdAt) : new Date()).toISOString(),
+        mimeType: img.mimeType || "application/octet-stream",
+        syncStatus: img.syncStatus || 'local',
         collectionIds: img.collectionIds || [],
-        transform: img.transform || { rotate: 0 },
+        transform: img.transform && typeof img.transform.rotate === 'number' ? { rotate: img.transform.rotate } : { rotate: 0 },
         isPotentialDuplicate: img.isPotentialDuplicate || false,
-        hasTags: typeof img.hasTags === 'boolean' ? img.hasTags : (img.tags && img.tags.length > 0),
-        hasDescription: typeof img.hasDescription === 'boolean' ? img.hasDescription : (img.description && img.description.trim() !== ''),
+        hasTags: typeof img.hasTags === 'boolean' ? img.hasTags : ((img.tags || []).length > 0),
+        hasDescription: typeof img.hasDescription === 'boolean' ? img.hasDescription : ((img.description || "").trim() !== ''),
+        fileNameInZip: fileNameInZip, 
       };
     }),
   };
@@ -339,11 +343,16 @@ export const exportData = async (): Promise<{ metadataJson: string, imageFiles: 
   const imageFiles = images
     .filter(img => img.file instanceof Blob) 
     .map(img => {
-        const sanitizedOriginalName = (img.name || `image_no_name_${img.id || 'unknown'}`).replace(/[^a-zA-Z0-9_.-]/g, '_');
-        let extension = '.bin'; 
+        const sanitizedOriginalName = (img.name || `image_no_name_${img.id || 'unknown'}`).replace(/[^a-zA-Z0-9_.\-]/g, '_');
+        let extension = '.bin';
         if (img.mimeType && img.mimeType.includes('/')) {
             const typePart = img.mimeType.split('/')[1].toLowerCase();
-            extension = `.${typePart === 'jpeg' ? 'jpg' : typePart}`; 
+            const commonExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'tiff'];
+            if (commonExtensions.includes(typePart)) {
+                extension = `.${typePart === 'jpeg' ? 'jpg' : typePart}`;
+            } else {
+                extension = `.${typePart.substring(0,3)}`;
+            }
         }
         const fileNameInZip = `img_${img.id}_${sanitizedOriginalName}${extension}`;
         return {
@@ -352,123 +361,82 @@ export const exportData = async (): Promise<{ metadataJson: string, imageFiles: 
         };
   });
 
-  console.log(`[EXPORT DEBUG] Exporting: Prepared metadata and ${imageFiles.length} image files blobs.`);
   return { metadataJson: JSON.stringify(metadata, null, 2), imageFiles };
 };
 
 
 export const importData = async (metadataJson: string, files: File[]): Promise<string[]> => {
-  console.log("[IMPORT DEBUG DB] Starting importData function.");
   const warnings: string[] = [];
 
   let parsedData;
   try {
     parsedData = JSON.parse(metadataJson);
-    console.log("[IMPORT DEBUG DB] Metadata JSON parsed. Version:", parsedData.version);
-    if (parsedData.version !== 6) { // Check for expected version
+    if (parsedData.version !== 6) { 
         warnings.push(`Import failed: Metadata version mismatch. Expected v6, got v${parsedData.version}. Try exporting new data first.`);
-        console.error(`[IMPORT DEBUG DB] Metadata version mismatch. Expected v6, got v${parsedData.version}`);
         return warnings;
     }
   } catch (e) {
-    console.error("[IMPORT DEBUG DB] Failed to parse metadata JSON.", e);
     warnings.push(`Failed to parse metadata JSON: ${(e as Error).message}`);
     return warnings;
   }
 
   const importedCollectionsRaw: Array<any> = parsedData.collections || [];
-  console.log(`[IMPORT DEBUG DB] ${importedCollectionsRaw.length} collections raw objects from metadata.`);
-
   const importedImagesJsonData: Array<any> = parsedData.images || [];
-  console.log(`[IMPORT DEBUG DB] ${importedImagesJsonData.length} images raw objects from metadata.`);
-
 
   const oldToNewCollectionIdMap = new Map<number, number>();
   const collectionParentImportData: Array<{ newDbId: number; oldParentId: number | null }> = [];
-
   const filesMap = new Map(files.map(f => [f.name, f]));
-  console.log(`[IMPORT DEBUG DB] ${filesMap.size} image files provided from ZIP. Names: ${Array.from(filesMap.keys()).join(', ')}`);
 
   await db.transaction('rw', db.collections, db.images, async () => {
-    console.log("[IMPORT DEBUG DB] Dexie transaction started for collections and images.");
-
-    console.log("[IMPORT DEBUG DB] Collections Pass 1 - Inserting collections and mapping IDs.");
     for (const collToImport of importedCollectionsRaw) {
       const oldCollectionId = collToImport.id;
-
-      const newCollectionEntry: Omit<Collection, 'id' | 'children' | 'imageCount'> = {
-        name: collToImport.name || "Unnamed Collection",
+      const newCollectionEntry: Omit<Collection, 'id' |'children'|'imageCount'> = {
+        name: collToImport.name || `Imported Collection ${Date.now()}`,
+        parentId: null, // Will be set in pass 2
         createdAt: collToImport.createdAt ? new Date(collToImport.createdAt) : new Date(),
-        parentId: null, 
       };
-
       if (!(newCollectionEntry.createdAt instanceof Date) || isNaN(newCollectionEntry.createdAt.getTime())) {
-        const warningMsg = `Collection "${newCollectionEntry.name}" (Old ID: ${oldCollectionId}) has invalid createdAt value ("${collToImport.createdAt}"). Using current date.`;
-        warnings.push(warningMsg);
-        console.warn(`[IMPORT DEBUG DB] ${warningMsg}`);
+        warnings.push(`Collection "${newCollectionEntry.name}" (Old ID: ${oldCollectionId}) has invalid createdAt value ("${collToImport.createdAt}"). Using current date.`);
         newCollectionEntry.createdAt = new Date();
       }
-
       try {
         const newGeneratedDbId = await db.collections.add(newCollectionEntry as Collection);
         if (oldCollectionId !== undefined && oldCollectionId !== null) { 
           oldToNewCollectionIdMap.set(oldCollectionId, newGeneratedDbId);
         }
         collectionParentImportData.push({ newDbId: newGeneratedDbId, oldParentId: collToImport.parentId ?? null });
-        console.log(`[IMPORT DEBUG DB] Added collection "${newCollectionEntry.name}". Old ID: ${oldCollectionId}, New DB ID: ${newGeneratedDbId}. Original parentId: ${collToImport.parentId}`);
       } catch (e) {
-        const errorMsg = `Failed to import collection "${newCollectionEntry.name}" (Old ID: ${oldCollectionId}): ${(e as Error).message}`;
-        warnings.push(errorMsg);
-        console.error(`[IMPORT DEBUG DB] ${errorMsg}`, e);
+        warnings.push(`Failed to import collection "${newCollectionEntry.name}" (Old ID: ${oldCollectionId}): ${(e as Error).message}`);
       }
     }
-    console.log(`[IMPORT DEBUG DB] Collections Pass 1 completed. ${oldToNewCollectionIdMap.size} collections mapped.`);
-    console.log("[IMPORT DEBUG DB] Old to New Collection ID Map:", oldToNewCollectionIdMap);
-    console.log("[IMPORT DEBUG DB] Collection Parent Import Data for Pass 2:", collectionParentImportData);
 
-
-    console.log("[IMPORT DEBUG DB] Collections Pass 2 - Updating parent IDs.");
     for (const { newDbId, oldParentId } of collectionParentImportData) {
       if (oldParentId !== null && oldParentId !== undefined) {
         const newParentDbId = oldToNewCollectionIdMap.get(oldParentId);
         if (newParentDbId !== undefined) {
           try {
             await db.collections.update(newDbId, { parentId: newParentDbId });
-            console.log(`[IMPORT DEBUG DB] Set parent for collection (New DB ID: ${newDbId}) to New Parent DB ID: ${newParentDbId} (Original Parent ID: ${oldParentId})`);
           } catch (e) {
-             const errorMsg = `Failed to set parent for collection (New DB ID: ${newDbId}, Original Parent ID: ${oldParentId}): ${(e as Error).message}`;
-             warnings.push(errorMsg);
-             console.error(`[IMPORT DEBUG DB] ${errorMsg}`, e);
+             warnings.push(`Failed to set parent for collection (New DB ID: ${newDbId}, Original Parent ID: ${oldParentId}): ${(e as Error).message}`);
           }
         } else {
-          const warningMsg = `Parent collection (Original ID: ${oldParentId}) for collection (New DB ID: ${newDbId}) not found in mapping. It will remain a root collection.`;
-          warnings.push(warningMsg);
-          console.warn(`[IMPORT DEBUG DB] ${warningMsg}`);
+          warnings.push(`Parent collection (Original ID: ${oldParentId}) for collection (New DB ID: ${newDbId}) not found in mapping. It will remain a root collection.`);
         }
       }
     }
-    console.log("[IMPORT DEBUG DB] Collections Pass 2 completed.");
 
-
-    console.log("[IMPORT DEBUG DB] Starting image import process.");
-    let imagesAddedCount = 0;
     for (const imgJson of importedImagesJsonData) {
-      console.log(`[IMPORT DEBUG DB] Processing image JSON: name="${imgJson.name}", fileNameInZip="${imgJson.fileNameInZip}"`);
       const imageFile = filesMap.get(imgJson.fileNameInZip);
-
       if (imageFile) {
-        console.log(`[IMPORT DEBUG DB] Found file in ZIP for "${imgJson.fileNameInZip}": ${imageFile.name}, type: ${imageFile.type}`);
-
         const newImageCollectionIds = (imgJson.collectionIds || [])
           .map((oldCollId: number) => oldToNewCollectionIdMap.get(oldCollId))
           .filter((newCollId?: number): newCollId is number => newCollId !== undefined && newCollId !== null); 
-        console.log(`[IMPORT DEBUG DB] Mapped collection IDs for "${imgJson.name}": Old ${JSON.stringify(imgJson.collectionIds)}, New ${JSON.stringify(newImageCollectionIds)}`);
         
         const importedTags = Array.isArray(imgJson.tags) ? imgJson.tags : [];
         const importedDescription = typeof imgJson.description === 'string' ? imgJson.description : "";
 
         const imageToAdd: Omit<ImageMetadata, 'id'> = {
-          name: imgJson.name || imageFile.name, 
+          name: imgJson.name || imageFile.name || `imported_image_${Date.now()}`,
           file: imageFile,
           tags: importedTags,
           description: importedDescription,
@@ -477,41 +445,29 @@ export const importData = async (metadataJson: string, files: File[]): Promise<s
           isFavorite: typeof imgJson.isFavorite === 'boolean' ? imgJson.isFavorite : false,
           isProtected: typeof imgJson.isProtected === 'boolean' ? imgJson.isProtected : false,
           createdAt: imgJson.createdAt ? new Date(imgJson.createdAt) : new Date(),
-          mimeType: imageFile.type || imgJson.mimeType || 'application/octet-stream', 
-          syncStatus: imgJson.syncStatus || 'local',
+          mimeType: imageFile.type || imgJson.mimeType || 'application/octet-stream',
+          syncStatus: (['local', 'pending', 'synced'].includes(imgJson.syncStatus) ? imgJson.syncStatus : 'local') as ImageMetadata['syncStatus'],
           collectionIds: newImageCollectionIds,
-          transform: imgJson.transform && typeof imgJson.transform.rotate === 'number' ? imgJson.transform : { rotate: 0 },
+          transform: (imgJson.transform && typeof imgJson.transform.rotate === 'number') ? { rotate: imgJson.transform.rotate } : { rotate: 0 },
           isPotentialDuplicate: typeof imgJson.isPotentialDuplicate === 'boolean' ? imgJson.isPotentialDuplicate : false,
           hasTags: typeof imgJson.hasTags === 'boolean' ? imgJson.hasTags : (importedTags.length > 0),
           hasDescription: typeof imgJson.hasDescription === 'boolean' ? imgJson.hasDescription : (importedDescription.trim() !== ''),
         };
 
         if (!(imageToAdd.createdAt instanceof Date) || isNaN(imageToAdd.createdAt.getTime())) {
-          const warningMsg = `Image "${imageToAdd.name}" has invalid createdAt value ("${imgJson.createdAt}"). Using current date.`;
-          warnings.push(warningMsg);
-          console.warn(`[IMPORT DEBUG DB] ${warningMsg}`);
+          warnings.push(`Image "${imageToAdd.name}" has invalid createdAt value ("${imgJson.createdAt}"). Using current date.`);
           imageToAdd.createdAt = new Date();
         }
-
         try {
           await db.images.add(imageToAdd as ImageMetadata);
-          imagesAddedCount++;
-          console.log(`[IMPORT DEBUG DB] Added image "${imageToAdd.name}" to DB.`);
         } catch (e) {
-          const errorMsg = `Failed to import image "${imageToAdd.name}": ${(e as Error).message}`;
-          warnings.push(errorMsg);
-          console.error(`[IMPORT DEBUG DB] ${errorMsg}`, e);
+          warnings.push(`Failed to import image "${imageToAdd.name}": ${(e as Error).message}`);
         }
       } else {
-        const warningMsg = `Image file not found in ZIP for metadata entry: name="${imgJson.name}", fileNameInZip="${imgJson.fileNameInZip}". Searched for "${imgJson.fileNameInZip}". File map keys: ${Array.from(filesMap.keys())}. Skipping image.`;
-        warnings.push(warningMsg);
-        console.warn(`[IMPORT DEBUG DB] ${warningMsg}`);
+        warnings.push(`Image file not found in ZIP for metadata entry: name="${imgJson.name}", fileNameInZip="${imgJson.fileNameInZip}". Skipping image.`);
       }
     }
-    console.log(`[IMPORT DEBUG DB] Image import process completed. ${imagesAddedCount} images added to DB.`);
   });
-
-  console.log("[IMPORT DEBUG DB] importData function finished. Warnings collected:", warnings.length);
   return warnings;
 };
 
@@ -521,7 +477,6 @@ export const deleteAllData = async (): Promise<void> => {
     await db.images.clear();
     await db.collections.clear();
   });
-  console.log("All data deleted from DB.");
 };
 
 // Stats
@@ -547,7 +502,7 @@ export const getUntaggedImageCount = async (): Promise<number> => {
   ).count();
 };
 
-export const getUndescribedImageCount = async (): Promise<number> => { // New function
+export const getUndescribedImageCount = async (): Promise<number> => {
   return db.images.filter(img => 
     !img.isPotentialDuplicate &&
     img.hasDescription === false
@@ -603,8 +558,3 @@ export const bulkAddImagesToCollections = async (imageIds: number[], targetColle
     }
   });
 };
-
-
-    
-
-    
