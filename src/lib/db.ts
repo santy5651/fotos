@@ -8,8 +8,12 @@ export class PicStackDexie extends Dexie {
 
   constructor() {
     super('PicStackDB');
+    this.version(6).stores({ // Incremented version for new index
+      images: '++id, name, *tags, createdAt, isFavorite, isProtected, *collectionIds, mimeType, isPotentialDuplicate, hasTags, hasDescription', 
+      collections: '++id, name, parentId, createdAt',
+    });
     this.version(5).stores({
-      images: '++id, name, *tags, createdAt, isFavorite, isProtected, *collectionIds, mimeType, isPotentialDuplicate, hasTags, hasDescription', // Added hasDescription
+      images: '++id, name, *tags, createdAt, isFavorite, isProtected, *collectionIds, mimeType, isPotentialDuplicate, hasTags, hasDescription',
       collections: '++id, name, parentId, createdAt',
     }).upgrade(async tx => {
       console.log("Upgrading DB from version 4 to 5 (if applicable)");
@@ -89,6 +93,7 @@ export const getImages = async (filter?: {
   reviewDuplicates?: boolean;
   showUnassigned?: boolean;
   showUntagged?: boolean;
+  showUndescribed?: boolean; // New filter
 }): Promise<ImageMetadata[]> => {
   let finalImages: ImageMetadata[] = [];
 
@@ -100,9 +105,7 @@ export const getImages = async (filter?: {
     const duplicateNames = new Set(potentialDuplicatesFlagged.map(img => img.name.toLowerCase()));
     
     finalImages = await db.images.filter(img => duplicateNames.has(img.name.toLowerCase())).toArray();
-
   } else {
-    // Standard filtering logic
     let imagesQuery: Dexie.Collection<ImageMetadata, number>;
 
     if (filter?.showUnassigned) {
@@ -114,6 +117,11 @@ export const getImages = async (filter?: {
       imagesQuery = db.images.filter(img => 
         !img.isPotentialDuplicate &&
         img.hasTags === false
+      );
+    } else if (filter?.showUndescribed) { // New filter condition
+      imagesQuery = db.images.filter(img => 
+        !img.isPotentialDuplicate &&
+        img.hasDescription === false
       );
     } else if (filter?.collectionId !== null && filter?.collectionId !== undefined) {
       const selectedCollectionId = filter.collectionId;
@@ -139,9 +147,11 @@ export const getImages = async (filter?: {
       if (nameA < nameB) return -1;
       if (nameA > nameB) return 1;
       
+      // If names are equal, sort by ID (older ID first)
       if ((a.id || 0) < (b.id || 0)) return -1;
       if ((a.id || 0) > (b.id || 0)) return 1;
-
+      
+      // Fallback to creation date if IDs somehow clash or are missing (unlikely for persisted data)
       if (a.createdAt.getTime() < b.createdAt.getTime()) return -1;
       if (a.createdAt.getTime() > b.createdAt.getTime()) return 1;
       
@@ -152,7 +162,7 @@ export const getImages = async (filter?: {
   }
 
 
-  // Apply search term if present, but not if in reviewDuplicates mode (already handled)
+  // Apply search term if present, but not if in reviewDuplicates mode (already handled by name grouping)
   if (!filter?.reviewDuplicates && filter?.searchTerm && filter.searchTerm.trim() !== '') {
     const searchTerm = filter.searchTerm.trim();
     const termLower = searchTerm.toLowerCase();
@@ -210,7 +220,6 @@ export const deleteImage = async (id: number): Promise<void> => {
 
 export const checkIfImageExistsByName = async (fileName: string): Promise<boolean> => {
   const lowerCaseFileName = fileName.toLowerCase();
-  // Check against non-flagged images. If an image is already flagged, uploading another with the same name should also be flagged.
   const count = await db.images.filter(img => img.name.toLowerCase() === lowerCaseFileName && !img.isPotentialDuplicate).count();
   return count > 0;
 };
@@ -294,7 +303,7 @@ export const exportData = async (): Promise<{ metadataJson: string, imageFiles: 
   console.log(`[EXPORT DEBUG] Exporting: Found ${images.length} images and ${collections.length} collections.`);
 
   const metadata = {
-    version: 5, 
+    version: 6, // Updated version
     collections: collections.map(c => {
       const { children, imageCount, ...serializableCollection } = c; 
       return {
@@ -356,9 +365,9 @@ export const importData = async (metadataJson: string, files: File[]): Promise<s
   try {
     parsedData = JSON.parse(metadataJson);
     console.log("[IMPORT DEBUG DB] Metadata JSON parsed. Version:", parsedData.version);
-    if (parsedData.version !== 5) { // Check for expected version
-        warnings.push(`Import failed: Metadata version mismatch. Expected v5, got v${parsedData.version}. Try exporting new data first.`);
-        console.error(`[IMPORT DEBUG DB] Metadata version mismatch. Expected v5, got v${parsedData.version}`);
+    if (parsedData.version !== 6) { // Check for expected version
+        warnings.push(`Import failed: Metadata version mismatch. Expected v6, got v${parsedData.version}. Try exporting new data first.`);
+        console.error(`[IMPORT DEBUG DB] Metadata version mismatch. Expected v6, got v${parsedData.version}`);
         return warnings;
     }
   } catch (e) {
@@ -538,6 +547,14 @@ export const getUntaggedImageCount = async (): Promise<number> => {
   ).count();
 };
 
+export const getUndescribedImageCount = async (): Promise<number> => { // New function
+  return db.images.filter(img => 
+    !img.isPotentialDuplicate &&
+    img.hasDescription === false
+  ).count();
+};
+
+
 export const getImagesPerCollection = async (): Promise<{ name: string, count: number }[]> => {
   const collections = await db.collections.toArray();
   const counts = await Promise.all(
@@ -587,5 +604,7 @@ export const bulkAddImagesToCollections = async (imageIds: number[], targetColle
   });
 };
 
+
+    
 
     

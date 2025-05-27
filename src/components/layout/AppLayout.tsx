@@ -32,8 +32,10 @@ interface AppLayoutProps {
   isReviewDuplicatesMode: boolean;
   onToggleShowUnassigned: () => void; 
   isShowUnassignedMode: boolean; 
-  onToggleShowUntagged: () => void; // New prop
-  isShowUntaggedMode: boolean; // New prop
+  onToggleShowUntagged: () => void;
+  isShowUntaggedMode: boolean;
+  onToggleShowUndescribed: () => void; // New prop
+  isShowUndescribedMode: boolean; // New prop
 }
 
 export default function AppLayout({ 
@@ -45,8 +47,10 @@ export default function AppLayout({
   isReviewDuplicatesMode,
   onToggleShowUnassigned, 
   isShowUnassignedMode, 
-  onToggleShowUntagged, // New prop
-  isShowUntaggedMode, // New prop
+  onToggleShowUntagged,
+  isShowUntaggedMode,
+  onToggleShowUndescribed, // New prop
+  isShowUndescribedMode, // New prop
 }: AppLayoutProps) {
   const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
   const [isTagExplorerModalOpen, setIsTagExplorerModalOpen] = useState(false);
@@ -77,8 +81,10 @@ export default function AppLayout({
               isReviewDuplicatesMode={isReviewDuplicatesMode}
               onToggleShowUnassigned={onToggleShowUnassigned} 
               isShowUnassignedMode={isShowUnassignedMode} 
-              onToggleShowUntagged={onToggleShowUntagged} // Pass new prop
-              isShowUntaggedMode={isShowUntaggedMode} // Pass new prop
+              onToggleShowUntagged={onToggleShowUntagged}
+              isShowUntaggedMode={isShowUntaggedMode}
+              onToggleShowUndescribed={onToggleShowUndescribed} // Pass new prop
+              isShowUndescribedMode={isShowUndescribedMode} // Pass new prop
             />
           </ScrollArea>
         </SidebarContent>
@@ -130,3 +136,5 @@ export default function AppLayout({
     </SidebarProvider>
   );
 }
+
+    

@@ -4,14 +4,15 @@
 import type { ImageMetadata } from '@/types';
 import ImageCard from './ImageCard';
 import { ScrollArea } from '../ui/scroll-area';
-import { AlertTriangle, FilterX, Inbox, Tag } from 'lucide-react'; // Added Tag icon
+import { AlertTriangle, FilterX, Inbox, Tag, FileX } from 'lucide-react'; // Added FileX icon
 
 interface ImageGridProps {
   images: ImageMetadata[];
   onUpdate: () => void;
   isReviewDuplicatesMode?: boolean;
   isShowUnassignedMode?: boolean;
-  isShowUntaggedMode?: boolean; // New prop
+  isShowUntaggedMode?: boolean;
+  isShowUndescribedMode?: boolean; // New prop
   selectedImageIds: Set<number>;
   onImageToggleSelection: (imageId: number) => void;
   searchTerm?: string; 
@@ -22,7 +23,8 @@ export default function ImageGrid({
   onUpdate, 
   isReviewDuplicatesMode, 
   isShowUnassignedMode,
-  isShowUntaggedMode, // New prop
+  isShowUntaggedMode,
+  isShowUndescribedMode, // New prop
   selectedImageIds,
   onImageToggleSelection,
   searchTerm
@@ -45,11 +47,19 @@ export default function ImageGrid({
             </div>
         );
     }
-    if (isShowUntaggedMode) { // New message for untagged
+    if (isShowUntaggedMode) { 
         return (
             <div className="text-center text-muted-foreground py-10 flex flex-col items-center gap-2">
-                <Tag className="w-10 h-10 text-muted-foreground" /> {/* Using Tag icon */}
+                <Tag className="w-10 h-10 text-muted-foreground" />
                 <p>No hay imágenes sin etiquetas.</p>
+            </div>
+        );
+    }
+    if (isShowUndescribedMode) { // New message for undescribed
+        return (
+            <div className="text-center text-muted-foreground py-10 flex flex-col items-center gap-2">
+                <FileX className="w-10 h-10 text-muted-foreground" /> 
+                <p>No hay imágenes sin descripción.</p>
             </div>
         );
     }
@@ -95,3 +105,5 @@ export default function ImageGrid({
     </ScrollArea>
   );
 }
+
+    
