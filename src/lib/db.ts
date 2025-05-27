@@ -77,21 +77,26 @@ export const getImages = async (filter?: {
   showUnassigned?: boolean;
   showUntagged?: boolean;
 }): Promise<ImageMetadata[]> => {
-  let imagesQuery: Dexie.Collection<ImageMetadata, number>;
-  let finalImages: ImageMetadata[];
+  let finalImages: ImageMetadata[] = [];
 
   if (filter?.reviewDuplicates) {
-    // Use filter() for boolean comparison if where().equals() causes issues
-    let potentialDuplicates = await db.images.filter(img => img.isPotentialDuplicate === true).toArray();
+    const potentialDuplicatesFlagged = await db.images.filter(img => img.isPotentialDuplicate === true).toArray();
+    if (potentialDuplicatesFlagged.length === 0) {
+      return []; // No images are flagged, so the review list is empty
+    }
+    const duplicateNames = new Set(potentialDuplicatesFlagged.map(img => img.name.toLowerCase()));
     
-    potentialDuplicates.sort((a, b) => {
+    // Fetch all images (flagged or not) that have one of these names
+    const imagesToReview = await db.images.filter(img => duplicateNames.has(img.name.toLowerCase())).toArray();
+
+    imagesToReview.sort((a, b) => {
       const nameA = a.name.toLowerCase();
       const nameB = b.name.toLowerCase();
       
       if (nameA < nameB) return -1;
       if (nameA > nameB) return 1;
       
-      // If names are the same, sort by ID
+      // If names are the same, sort by ID (older ID usually means earlier upload)
       if ((a.id || 0) < (b.id || 0)) return -1;
       if ((a.id || 0) > (b.id || 0)) return 1;
 
@@ -101,46 +106,42 @@ export const getImages = async (filter?: {
       
       return 0; 
     });
-    finalImages = potentialDuplicates;
+    finalImages = imagesToReview;
 
-    if (filter?.searchTerm && filter.searchTerm.trim() !== '') {
-      const searchTerm = filter.searchTerm.trim().toLowerCase();
-      finalImages = finalImages.filter(img =>
-        img.name.toLowerCase().includes(searchTerm) ||
-        (img.tags && img.tags.some(tag => tag.toLowerCase().includes(searchTerm)))
-      );
-    }
-    return finalImages;
-  }
+  } else {
+    // Standard filtering logic
+    let imagesQuery: Dexie.Collection<ImageMetadata, number>;
 
-  if (filter?.showUnassigned) {
-    imagesQuery = db.images.filter(img =>
-      !img.isPotentialDuplicate &&
-      (!img.collectionIds || img.collectionIds.length === 0)
-    );
-  } else if (filter?.showUntagged) {
-    imagesQuery = db.images.filter(img => 
-      !img.isPotentialDuplicate &&
-      img.hasTags === false
-    );
-  } else if (filter?.collectionId !== null && filter?.collectionId !== undefined) {
-    const selectedCollectionId = filter.collectionId;
-    imagesQuery = db.images.filter(img =>
+    if (filter?.showUnassigned) {
+      imagesQuery = db.images.filter(img =>
         !img.isPotentialDuplicate &&
-        (
-            (img.collectionIds && img.collectionIds.includes(selectedCollectionId)) ||
-            (!img.collectionIds || img.collectionIds.length === 0) 
-        )
-    );
-  } else { 
-    imagesQuery = db.images.filter(img => !img.isPotentialDuplicate);
+        (!img.collectionIds || img.collectionIds.length === 0)
+      );
+    } else if (filter?.showUntagged) {
+      imagesQuery = db.images.filter(img => 
+        !img.isPotentialDuplicate &&
+        img.hasTags === false
+      );
+    } else if (filter?.collectionId !== null && filter?.collectionId !== undefined) {
+      const selectedCollectionId = filter.collectionId;
+      imagesQuery = db.images.filter(img =>
+          !img.isPotentialDuplicate &&
+          (
+              (img.collectionIds && img.collectionIds.includes(selectedCollectionId)) ||
+              (!img.collectionIds || img.collectionIds.length === 0) 
+          )
+      );
+    } else { 
+      imagesQuery = db.images.filter(img => !img.isPotentialDuplicate);
+    }
+    let sortedImages = await imagesQuery.sortBy('createdAt');
+    sortedImages.reverse(); 
+    finalImages = sortedImages;
   }
 
-  let sortedImages = await imagesQuery.sortBy('createdAt');
-  sortedImages.reverse(); 
-  finalImages = sortedImages;
 
-  if (filter?.searchTerm && filter.searchTerm.trim() !== '') {
+  // Apply search term if present, but not if in reviewDuplicates mode (already handled)
+  if (!filter?.reviewDuplicates && filter?.searchTerm && filter.searchTerm.trim() !== '') {
     const searchTerm = filter.searchTerm.trim();
     const termLower = searchTerm.toLowerCase();
     const allCollections = await getCollections(); 
@@ -193,6 +194,7 @@ export const deleteImage = async (id: number): Promise<void> => {
 
 export const checkIfImageExistsByName = async (fileName: string): Promise<boolean> => {
   const lowerCaseFileName = fileName.toLowerCase();
+  // Check against non-flagged images. If an image is already flagged, uploading another with the same name should also be flagged.
   const count = await db.images.filter(img => img.name.toLowerCase() === lowerCaseFileName && !img.isPotentialDuplicate).count();
   return count > 0;
 };
@@ -558,3 +560,6 @@ export const bulkAddImagesToCollections = async (imageIds: number[], targetColle
     }
   });
 };
+
+
+    
