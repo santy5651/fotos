@@ -8,6 +8,17 @@ export class PicStackDexie extends Dexie {
 
   constructor() {
     super('PicStackDB');
+    this.version(5).stores({
+      images: '++id, name, *tags, createdAt, isFavorite, isProtected, *collectionIds, mimeType, isPotentialDuplicate, hasTags, hasDescription', // Added hasDescription
+      collections: '++id, name, parentId, createdAt',
+    }).upgrade(async tx => {
+      console.log("Upgrading DB from version 4 to 5 (if applicable)");
+      await tx.table("images").toCollection().modify(image => {
+        if (image.hasDescription === undefined) {
+            image.hasDescription = !!(image.description && image.description.trim() !== "");
+        }
+      });
+    });
     this.version(4).stores({
       images: '++id, name, *tags, createdAt, isFavorite, isProtected, *collectionIds, mimeType, isPotentialDuplicate, hasTags',
       collections: '++id, name, parentId, createdAt',
@@ -49,12 +60,13 @@ export class PicStackDexie extends Dexie {
 export const db = new PicStackDexie();
 
 // Image CRUD
-export const addImage = async (image: Omit<ImageMetadata, 'id' | 'createdAt' | 'syncStatus' | 'hasTags'> & { createdAt?: Date, syncStatus?: ImageMetadata['syncStatus'] }): Promise<number> => {
+export const addImage = async (image: Omit<ImageMetadata, 'id' | 'createdAt' | 'syncStatus' | 'hasTags' | 'hasDescription'> & { createdAt?: Date, syncStatus?: ImageMetadata['syncStatus'] }): Promise<number> => {
   const newImage: ImageMetadata = {
     id: undefined, 
     name: image.name,
     file: image.file,
     tags: image.tags || [],
+    description: image.description || '',
     width: image.width,
     height: image.height,
     isFavorite: image.isFavorite || false,
@@ -66,6 +78,7 @@ export const addImage = async (image: Omit<ImageMetadata, 'id' | 'createdAt' | '
     transform: image.transform || { rotate: 0 },
     isPotentialDuplicate: image.isPotentialDuplicate || false,
     hasTags: !!(image.tags && image.tags.length > 0),
+    hasDescription: !!(image.description && image.description.trim() !== ''),
   };
   return db.images.add(newImage);
 };
@@ -82,31 +95,11 @@ export const getImages = async (filter?: {
   if (filter?.reviewDuplicates) {
     const potentialDuplicatesFlagged = await db.images.filter(img => img.isPotentialDuplicate === true).toArray();
     if (potentialDuplicatesFlagged.length === 0) {
-      return []; // No images are flagged, so the review list is empty
+      return []; 
     }
     const duplicateNames = new Set(potentialDuplicatesFlagged.map(img => img.name.toLowerCase()));
     
-    // Fetch all images (flagged or not) that have one of these names
-    const imagesToReview = await db.images.filter(img => duplicateNames.has(img.name.toLowerCase())).toArray();
-
-    imagesToReview.sort((a, b) => {
-      const nameA = a.name.toLowerCase();
-      const nameB = b.name.toLowerCase();
-      
-      if (nameA < nameB) return -1;
-      if (nameA > nameB) return 1;
-      
-      // If names are the same, sort by ID (older ID usually means earlier upload)
-      if ((a.id || 0) < (b.id || 0)) return -1;
-      if ((a.id || 0) > (b.id || 0)) return 1;
-
-      // As a final tie-breaker, sort by creation date
-      if (a.createdAt.getTime() < b.createdAt.getTime()) return -1;
-      if (a.createdAt.getTime() > b.createdAt.getTime()) return 1;
-      
-      return 0; 
-    });
-    finalImages = imagesToReview;
+    finalImages = await db.images.filter(img => duplicateNames.has(img.name.toLowerCase())).toArray();
 
   } else {
     // Standard filtering logic
@@ -134,9 +127,28 @@ export const getImages = async (filter?: {
     } else { 
       imagesQuery = db.images.filter(img => !img.isPotentialDuplicate);
     }
-    let sortedImages = await imagesQuery.sortBy('createdAt');
-    sortedImages.reverse(); 
-    finalImages = sortedImages;
+    finalImages = await imagesQuery.toArray();
+  }
+
+
+  if (filter?.reviewDuplicates) {
+      finalImages.sort((a, b) => {
+      const nameA = a.name.toLowerCase();
+      const nameB = b.name.toLowerCase();
+      
+      if (nameA < nameB) return -1;
+      if (nameA > nameB) return 1;
+      
+      if ((a.id || 0) < (b.id || 0)) return -1;
+      if ((a.id || 0) > (b.id || 0)) return 1;
+
+      if (a.createdAt.getTime() < b.createdAt.getTime()) return -1;
+      if (a.createdAt.getTime() > b.createdAt.getTime()) return 1;
+      
+      return 0; 
+    });
+  } else {
+     finalImages.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   }
 
 
@@ -155,6 +167,7 @@ export const getImages = async (filter?: {
       finalImages = finalImages.filter(img => {
         if (img.name.toLowerCase().includes(termLower)) return true;
         if (img.tags && img.tags.some(tag => tag.toLowerCase().includes(termLower))) return true;
+        if (img.description && img.description.toLowerCase().includes(termLower)) return true;
         
         if (img.collectionIds && img.collectionIds.length > 0) {
           const imageCollectionNames = img.collectionIds
@@ -180,6 +193,9 @@ export const getImageById = async (id: number): Promise<ImageMetadata | undefine
 export const updateImage = async (id: number, changes: Partial<ImageMetadata>): Promise<number> => {
   if (changes.tags !== undefined) {
     changes.hasTags = !!(changes.tags && changes.tags.length > 0);
+  }
+  if (changes.description !== undefined) {
+    changes.hasDescription = !!(changes.description && changes.description.trim() !== '');
   }
   return db.images.update(id, changes);
 };
@@ -278,7 +294,7 @@ export const exportData = async (): Promise<{ metadataJson: string, imageFiles: 
   console.log(`[EXPORT DEBUG] Exporting: Found ${images.length} images and ${collections.length} collections.`);
 
   const metadata = {
-    version: 4, 
+    version: 5, 
     collections: collections.map(c => {
       const { children, imageCount, ...serializableCollection } = c; 
       return {
@@ -301,10 +317,12 @@ export const exportData = async (): Promise<{ metadataJson: string, imageFiles: 
         fileNameInZip: fileNameInZip, 
         createdAt: img.createdAt ? img.createdAt.toISOString() : new Date().toISOString(),
         tags: img.tags || [], 
+        description: img.description || "",
         collectionIds: img.collectionIds || [],
         transform: img.transform || { rotate: 0 },
         isPotentialDuplicate: img.isPotentialDuplicate || false,
         hasTags: typeof img.hasTags === 'boolean' ? img.hasTags : (img.tags && img.tags.length > 0),
+        hasDescription: typeof img.hasDescription === 'boolean' ? img.hasDescription : (img.description && img.description.trim() !== ''),
       };
     }),
   };
@@ -338,6 +356,11 @@ export const importData = async (metadataJson: string, files: File[]): Promise<s
   try {
     parsedData = JSON.parse(metadataJson);
     console.log("[IMPORT DEBUG DB] Metadata JSON parsed. Version:", parsedData.version);
+    if (parsedData.version !== 5) { // Check for expected version
+        warnings.push(`Import failed: Metadata version mismatch. Expected v5, got v${parsedData.version}. Try exporting new data first.`);
+        console.error(`[IMPORT DEBUG DB] Metadata version mismatch. Expected v5, got v${parsedData.version}`);
+        return warnings;
+    }
   } catch (e) {
     console.error("[IMPORT DEBUG DB] Failed to parse metadata JSON.", e);
     warnings.push(`Failed to parse metadata JSON: ${(e as Error).message}`);
@@ -433,11 +456,13 @@ export const importData = async (metadataJson: string, files: File[]): Promise<s
         console.log(`[IMPORT DEBUG DB] Mapped collection IDs for "${imgJson.name}": Old ${JSON.stringify(imgJson.collectionIds)}, New ${JSON.stringify(newImageCollectionIds)}`);
         
         const importedTags = Array.isArray(imgJson.tags) ? imgJson.tags : [];
+        const importedDescription = typeof imgJson.description === 'string' ? imgJson.description : "";
 
         const imageToAdd: Omit<ImageMetadata, 'id'> = {
           name: imgJson.name || imageFile.name, 
           file: imageFile,
           tags: importedTags,
+          description: importedDescription,
           width: typeof imgJson.width === 'number' ? imgJson.width : 0,
           height: typeof imgJson.height === 'number' ? imgJson.height : 0,
           isFavorite: typeof imgJson.isFavorite === 'boolean' ? imgJson.isFavorite : false,
@@ -449,6 +474,7 @@ export const importData = async (metadataJson: string, files: File[]): Promise<s
           transform: imgJson.transform && typeof imgJson.transform.rotate === 'number' ? imgJson.transform : { rotate: 0 },
           isPotentialDuplicate: typeof imgJson.isPotentialDuplicate === 'boolean' ? imgJson.isPotentialDuplicate : false,
           hasTags: typeof imgJson.hasTags === 'boolean' ? imgJson.hasTags : (importedTags.length > 0),
+          hasDescription: typeof imgJson.hasDescription === 'boolean' ? imgJson.hasDescription : (importedDescription.trim() !== ''),
         };
 
         if (!(imageToAdd.createdAt instanceof Date) || isNaN(imageToAdd.createdAt.getTime())) {

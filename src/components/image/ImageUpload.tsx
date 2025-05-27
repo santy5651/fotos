@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { addImage, blobToDataURL, checkIfImageExistsByName } from '@/lib/db';
 import type { ImageMetadata } from '@/types';
 import { tagImage } from '@/ai/flows/tag-image';
+import { describeImage } from '@/ai/flows/describe-image-flow'; // New import
 
 interface ImageUploadProps {
   onUploadComplete: () => void;
@@ -26,11 +27,14 @@ export default function ImageUpload({ onUploadComplete }: ImageUploadProps) {
     let uploadedCount = 0;
     let flaggedCount = 0;
     let taggingFailedCount = 0;
+    let descriptionFailedCount = 0;
     const totalFiles = files.length;
 
     for (const file of Array.from(files)) {
       let isPotentialDuplicate = false;
       let tags: string[] = [];
+      let description: string = "";
+
       try {
         // 0. Check for duplicates by name (non-flagged images)
         const isExisting = await checkIfImageExistsByName(file.name);
@@ -53,39 +57,54 @@ export default function ImageUpload({ onUploadComplete }: ImageUploadProps) {
 
         // 3. AI Tagging
         try {
-          const aiResult = await tagImage({ photoDataUri: dataUri });
-          tags = aiResult.tags;
-          if (!isPotentialDuplicate) { // Don't toast AI tags for duplicates to reduce noise
+          const aiResultTags = await tagImage({ photoDataUri: dataUri });
+          tags = aiResultTags.tags;
+          if (!isPotentialDuplicate) { 
             toast({ title: "Etiquetado IA", description: `Etiquetas generadas para ${file.name}: ${tags.join(', ')}` });
           }
         } catch (aiError) {
           taggingFailedCount++;
-          console.error("AI tagging error:", aiError);
-          toast({ variant: "destructive", title: "Fallo en Etiquetado IA", description: `No se pudieron generar etiquetas para ${file.name}. La imagen se guardará sin etiquetas.` });
-          // tags will remain an empty array
+          console.error("AI tagging error for " + file.name + ":", aiError);
+          const errorMessage = (aiError as Error).message;
+          toast({ variant: "destructive", title: "Fallo en Etiquetado IA", description: `No se pudieron generar etiquetas para ${file.name}. ${errorMessage.includes('429') ? 'Límite de API alcanzado.' : ''}` });
         }
 
-        // 4. Prepare metadata
-        const imageMetadata: Omit<ImageMetadata, 'id' | 'createdAt' | 'syncStatus' | 'file' | 'hasTags'> & { file: File, hasTags: boolean } = {
+        // 4. AI Description
+        try {
+          const aiResultDesc = await describeImage({ photoDataUri: dataUri });
+          description = aiResultDesc.description;
+           if (!isPotentialDuplicate) {
+            toast({ title: "Descripción IA", description: `Descripción generada para ${file.name}.` });
+          }
+        } catch (aiError) {
+          descriptionFailedCount++;
+          console.error("AI description error for " + file.name + ":", aiError);
+          const errorMessage = (aiError as Error).message;
+          toast({ variant: "destructive", title: "Fallo en Descripción IA", description: `No se pudo generar descripción para ${file.name}. ${errorMessage.includes('429') ? 'Límite de API alcanzado.' : ''}` });
+        }
+        
+
+        // 5. Prepare metadata
+        const imageMetadata: Omit<ImageMetadata, 'id' | 'createdAt' | 'syncStatus' | 'file' | 'hasTags' | 'hasDescription'> & { file: File, hasTags: boolean, hasDescription: boolean } = {
           name: file.name,
           file: file,
           tags: tags,
+          description: description,
           width: dimensions.width,
           height: dimensions.height,
           isFavorite: false,
           isProtected: false,
           mimeType: file.type,
           collectionIds: [],
-          isPotentialDuplicate: isPotentialDuplicate, // Set the flag
+          isPotentialDuplicate: isPotentialDuplicate, 
           hasTags: tags.length > 0,
+          hasDescription: description.trim() !== "",
         };
 
         await addImage(imageMetadata as any);
         uploadedCount++;
-        if (!isPotentialDuplicate && tags.length > 0) { // Only success toast if not duplicate and tagging was successful
-            toast({ title: "Subida Exitosa", description: `${file.name} subida y procesada.` });
-        } else if (!isPotentialDuplicate && tags.length === 0 && taggingFailedCount > 0) {
-            // Handled by the AI tagging failed toast already
+        if (!isPotentialDuplicate && tags.length > 0 && description.trim() !== "") { 
+            toast({ title: "Subida Exitosa", description: `${file.name} subida, etiquetada y descrita.` });
         }
 
 
@@ -105,6 +124,9 @@ export default function ImageUpload({ onUploadComplete }: ImageUploadProps) {
     }
     if (taggingFailedCount > 0) {
         summaryDescription += ` ${taggingFailedCount} etiquetado(s) de IA fallido(s).`;
+    }
+    if (descriptionFailedCount > 0) {
+        summaryDescription += ` ${descriptionFailedCount} descripción(es) de IA fallida(s).`;
     }
     toast({ title: "Subida Finalizada", description: summaryDescription, duration: 7000 });
 

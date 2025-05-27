@@ -5,9 +5,9 @@ import type { ImageMetadata, Collection } from '@/types';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Heart, Shield, Trash2, RotateCcw, RotateCw, Tag, Loader2, ZoomIn, Edit3, CheckCircle2, AlertTriangle, Wand2 } from 'lucide-react'; // Added Wand2
+import { Heart, Shield, Trash2, RotateCcw, RotateCw, Tag, Loader2, ZoomIn, Edit3, CheckCircle2, AlertTriangle, Wand2, FileText } from 'lucide-react'; 
 import { useToast } from '@/hooks/use-toast';
-import { updateImage, deleteImage, db, blobToDataURL } from '@/lib/db'; // Added blobToDataURL
+import { updateImage, deleteImage, db, blobToDataURL } from '@/lib/db'; 
 import NextImage from 'next/image';
 import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -18,7 +18,8 @@ import ImageZoomModal from './ImageZoomModal';
 import RenameImageDialog from './RenameImageDialog';
 import { Checkbox } from '@/components/ui/checkbox'; 
 import { cn } from '@/lib/utils';
-import { tagImage } from '@/ai/flows/tag-image'; // New import
+import { tagImage } from '@/ai/flows/tag-image'; 
+import { describeImage } from '@/ai/flows/describe-image-flow'; // New import
 
 interface ImageCardProps {
   image: ImageMetadata;
@@ -34,7 +35,8 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
   const [isAddToCollectionDialogOpen, setIsAddToCollectionDialogOpen] = useState(false);
   const [isZoomModalOpen, setIsZoomModalOpen] = useState(false);
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
-  const [isRetagging, setIsRetagging] = useState(false); // New state for retagging loader
+  const [isRetagging, setIsRetagging] = useState(false); 
+  const [isGeneratingDescription, setIsGeneratingDescription] = useState(false); // New state
 
 
   useEffect(() => {
@@ -132,6 +134,30 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
     }
   };
 
+  const handleGenerateDescription = async () => {
+    if (!image.id || !image.file) {
+      toast({ variant: "destructive", title: "Error", description: "Información de imagen faltante para generar descripción." });
+      return;
+    }
+    setIsGeneratingDescription(true);
+    try {
+      const dataUri = await blobToDataURL(image.file);
+      const aiResult = await describeImage({ photoDataUri: dataUri });
+      await updateImage(image.id, { description: aiResult.description, hasDescription: aiResult.description.trim() !== "" });
+      toast({ title: "Descripción Generada", description: `Se generó una descripción para ${image.name}.` });
+      onUpdate();
+    } catch (error) {
+      console.error("Error generating description:", error);
+      toast({
+        variant: "destructive",
+        title: "Fallo al Generar Descripción",
+        description: `No se pudo generar una descripción para ${image.name}. ${ (error as Error).message.includes('429') ? 'Límite de API alcanzado. Intenta más tarde.' : (error as Error).message }`
+      });
+    } finally {
+      setIsGeneratingDescription(false);
+    }
+  };
+
 
   if (!imageUrl) {
     return (
@@ -218,17 +244,17 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
           </div>
         </CardContent>
 
-        <CardHeader className="pt-4 pb-2 px-4">
+        <CardHeader className="pt-4 pb-2 px-4 space-y-1">
           <CardTitle className="text-sm font-medium truncate" title={image.name}>{image.name}</CardTitle>
           
           {image.isPotentialDuplicate ? (
-            <Badge variant="destructive" className="mt-1 w-fit">
+            <Badge variant="destructive" className="w-fit">
               <AlertTriangle className="mr-1 h-3 w-3" />
               Potencial Duplicado
             </Badge>
           ) : image.hasTags ? (
-            <>
-              <div className="flex flex-wrap gap-1 mt-1">
+            <div>
+              <div className="flex flex-wrap gap-1">
                 {image.tags.slice(0, 2).map(tag => (
                   <Badge key={tag} variant="secondary" className="text-xs">
                     {tag}
@@ -236,15 +262,15 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
                 ))}
               </div>
               {image.tags.length > 2 && (
-                <div className="mt-1">
+                <div className="mt-0.5"> {/* Reduced margin for closer badge */}
                   <Badge variant="outline" className="text-xs">
                     +{image.tags.length - 2}
                   </Badge>
                 </div>
               )}
-            </>
+            </div>
           ) : (
-            <div className="mt-1 flex items-center">
+            <div className="flex items-center">
               <span className="text-xs text-muted-foreground italic mr-2">No hay etiquetas.</span>
               <Button 
                 variant="outline" 
@@ -264,14 +290,14 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
           )}
 
           {image.collectionIds && image.collectionIds.length > 0 && !image.isPotentialDuplicate && (
-            <>
+            <div>
               {imageCollections === undefined && (
-                <div className="mt-1 flex items-center text-xs text-muted-foreground">
+                <div className="flex items-center text-xs text-muted-foreground">
                   <Loader2 className="h-3 w-3 animate-spin mr-1" /> Loading collections...
                 </div>
               )}
               {imageCollections && imageCollections.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-1.5">
+                <div className="flex flex-wrap gap-1">
                   {imageCollections.map(collection => (
                     <Badge
                       key={collection.id}
@@ -283,7 +309,33 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
                   ))}
                 </div>
               )}
-            </>
+            </div>
+          )}
+
+          {!image.isPotentialDuplicate && (
+            image.hasDescription ? (
+              <p className="text-xs text-muted-foreground pt-1 leading-snug max-h-10 overflow-hidden text-ellipsis" title={image.description}>
+                {image.description}
+              </p>
+            ) : (
+              <div className="pt-1 flex items-center">
+                <span className="text-xs text-muted-foreground italic mr-2">Sin descripción.</span>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleGenerateDescription} 
+                  disabled={isGeneratingDescription}
+                  className="h-7 px-2 py-1 text-xs"
+                >
+                  {isGeneratingDescription ? (
+                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                  ) : (
+                    <FileText className="mr-1 h-3 w-3" />
+                  )}
+                  Generar
+                </Button>
+              </div>
+            )
           )}
         </CardHeader>
 
@@ -366,4 +418,3 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
     </>
   );
 }
-

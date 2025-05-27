@@ -18,6 +18,8 @@ export interface ImageMetadata {
   };
   isPotentialDuplicate?: boolean; // Flag for potential duplicates based on filename
   hasTags?: boolean; // True if tags array is not empty, for easier querying
+  description?: string; // Detailed textual description of the image
+  hasDescription?: boolean; // True if description field is not empty
 }
 
 export interface Collection {
