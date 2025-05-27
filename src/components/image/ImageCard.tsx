@@ -163,24 +163,22 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
               alt={image.name}
               fill
               style={{
-                objectFit: 'contain', // Changed from cover to contain
+                objectFit: 'contain', 
                 transform: `rotate(${currentRotation}deg)`
               }}
               className="transition-transform duration-300 ease-in-out group-hover:scale-105"
               data-ai-hint="photo gallery"
               onClick={(e) => {
-                 // Prevent click if clicking on an action button inside the overlay
                 if ((e.target as HTMLElement).closest('.image-actions-overlay') || (e.target as HTMLElement).closest('.image-selection-checkbox')) {
                   return;
                 }
                 onToggleSelection();
               }}
             />
-            {/* Selection Checkbox */}
             <div 
               className="image-selection-checkbox absolute top-2 left-2 z-20 p-1 bg-background/50 hover:bg-background/70 rounded-full cursor-pointer"
               onClick={(e) => {
-                e.stopPropagation(); // Prevent card click event
+                e.stopPropagation(); 
                 onToggleSelection();
               }}
             >
@@ -291,7 +289,7 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
 
         <CardFooter className="flex justify-between items-center px-4 pb-3 pt-2">
           <div className="text-xs text-muted-foreground truncate">
-            {new Date(image.createdAt).toLocaleDateString()} - {image.width}x{image.height}
+            {new Date(image.createdAt).toLocaleDateString()} - {image.width}x{image.height} (ID: {image.id})
           </div>
           {image.isPotentialDuplicate ? (
             <div className="flex gap-1">
@@ -368,3 +366,4 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
     </>
   );
 }
+
