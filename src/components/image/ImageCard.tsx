@@ -5,7 +5,7 @@ import type { ImageMetadata, Collection } from '@/types';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Heart, Shield, Trash2, RotateCcw, RotateCw, Tag, Loader2, ZoomIn, Edit3, CheckCircle2, AlertTriangle, Wand2, FileText } from 'lucide-react'; 
+import { Heart, Shield, Trash2, RotateCcw, RotateCw, Tag, Loader2, ZoomIn, Edit3, CheckCircle2, AlertTriangle, Wand2, FileText, FilePenLine } from 'lucide-react'; 
 import { useToast } from '@/hooks/use-toast';
 import { updateImage, deleteImage, db, blobToDataURL } from '@/lib/db'; 
 import NextImage from 'next/image';
@@ -19,7 +19,8 @@ import RenameImageDialog from './RenameImageDialog';
 import { Checkbox } from '@/components/ui/checkbox'; 
 import { cn } from '@/lib/utils';
 import { tagImage } from '@/ai/flows/tag-image'; 
-import { describeImage } from '@/ai/flows/describe-image-flow'; // New import
+import { describeImage } from '@/ai/flows/describe-image-flow';
+import ImageDetailsModal from './ImageDetailsModal'; // New import
 
 interface ImageCardProps {
   image: ImageMetadata;
@@ -36,7 +37,8 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
   const [isZoomModalOpen, setIsZoomModalOpen] = useState(false);
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
   const [isRetagging, setIsRetagging] = useState(false); 
-  const [isGeneratingDescription, setIsGeneratingDescription] = useState(false); // New state
+  const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
+  const [isImageDetailsModalOpen, setIsImageDetailsModalOpen] = useState(false); // New state
 
 
   useEffect(() => {
@@ -232,12 +234,25 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
             {!image.isPotentialDuplicate && (
               <div className="image-actions-overlay absolute bottom-0 left-0 right-0 px-1 py-1 bg-gradient-to-t from-black/70 via-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-in-out flex justify-start items-center z-10">
                 <div className="flex gap-0.5 flex-wrap">
-                  <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={handleFavoriteToggle} className="h-[28px] w-[28px] p-1 hover:bg-white/10"><Heart className={cn('h-4 w-4', image.isFavorite ? 'fill-red-500 text-red-500' : 'text-neutral-200 hover:text-white')} /></Button></TooltipTrigger><TooltipContent><p>Favorite</p></TooltipContent></Tooltip>
-                  <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={handleProtectToggle} className="h-[28px] w-[28px] p-1 hover:bg-white/10"><Shield className={cn('h-4 w-4', image.isProtected ? 'fill-blue-500 text-blue-500' : 'text-neutral-200 hover:text-white')} /></Button></TooltipTrigger><TooltipContent><p>Protect</p></TooltipContent></Tooltip>
-                  <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={() => setIsAddToCollectionDialogOpen(true)} className="h-[28px] w-[28px] p-1 hover:bg-white/10"><Tag className="h-4 w-4 text-neutral-200 hover:text-white" /></Button></TooltipTrigger><TooltipContent><p>Add to Collection</p></TooltipContent></Tooltip>
-                  <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={() => handleRotate('ccw')} className="h-[28px] w-[28px] p-1 hover:bg-white/10"><RotateCcw className="h-4 w-4 text-neutral-200 hover:text-white" /></Button></TooltipTrigger><TooltipContent><p>Rotate Left</p></TooltipContent></Tooltip>
-                  <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={() => handleRotate('cw')} className="h-[28px] w-[28px] p-1 hover:bg-white/10"><RotateCw className="h-4 w-4 text-neutral-200 hover:text-white" /></Button></TooltipTrigger><TooltipContent><p>Rotate Right</p></TooltipContent></Tooltip>
+                  <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={handleFavoriteToggle} className="h-[28px] w-[28px] p-1 hover:bg-white/10"><Heart className={cn('h-4 w-4', image.isFavorite ? 'fill-red-500 text-red-500' : 'text-neutral-200 hover:text-white')} /></Button></TooltipTrigger><TooltipContent><p>Favorito</p></TooltipContent></Tooltip>
+                  <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={handleProtectToggle} className="h-[28px] w-[28px] p-1 hover:bg-white/10"><Shield className={cn('h-4 w-4', image.isProtected ? 'fill-blue-500 text-blue-500' : 'text-neutral-200 hover:text-white')} /></Button></TooltipTrigger><TooltipContent><p>Proteger</p></TooltipContent></Tooltip>
+                  <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={() => setIsAddToCollectionDialogOpen(true)} className="h-[28px] w-[28px] p-1 hover:bg-white/10"><Tag className="h-4 w-4 text-neutral-200 hover:text-white" /></Button></TooltipTrigger><TooltipContent><p>Añadir a Colección</p></TooltipContent></Tooltip>
+                  <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={() => handleRotate('ccw')} className="h-[28px] w-[28px] p-1 hover:bg-white/10"><RotateCcw className="h-4 w-4 text-neutral-200 hover:text-white" /></Button></TooltipTrigger><TooltipContent><p>Girar Izquierda</p></TooltipContent></Tooltip>
+                  <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={() => handleRotate('cw')} className="h-[28px] w-[28px] p-1 hover:bg-white/10"><RotateCw className="h-4 w-4 text-neutral-200 hover:text-white" /></Button></TooltipTrigger><TooltipContent><p>Girar Derecha</p></TooltipContent></Tooltip>
                   <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={() => setIsZoomModalOpen(true)} className="h-[28px] w-[28px] p-1 hover:bg-white/10"><ZoomIn className="h-4 w-4 text-neutral-200 hover:text-white" /></Button></TooltipTrigger><TooltipContent><p>Zoom</p></TooltipContent></Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        onClick={() => setIsImageDetailsModalOpen(true)} 
+                        className="h-[28px] w-[28px] p-1 hover:bg-white/10"
+                      >
+                        <FilePenLine className="h-4 w-4 text-neutral-200 hover:text-white" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent><p>Detalles y Edición</p></TooltipContent>
+                  </Tooltip>
                 </div>
               </div>
             )}
@@ -262,7 +277,7 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
                 ))}
               </div>
               {image.tags.length > 2 && (
-                <div className="mt-0.5"> {/* Reduced margin for closer badge */}
+                <div className="mt-0.5"> 
                   <Badge variant="outline" className="text-xs">
                     +{image.tags.length - 2}
                   </Badge>
@@ -293,7 +308,7 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
             <div>
               {imageCollections === undefined && (
                 <div className="flex items-center text-xs text-muted-foreground">
-                  <Loader2 className="h-3 w-3 animate-spin mr-1" /> Loading collections...
+                  <Loader2 className="h-3 w-3 animate-spin mr-1" /> Cargando colecciones...
                 </div>
               )}
               {imageCollections && imageCollections.length > 0 && (
@@ -351,7 +366,7 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
                     <Edit3 className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent><p>Rename & Keep</p></TooltipContent>
+                <TooltipContent><p>Renombrar y Conservar</p></TooltipContent>
               </Tooltip>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
@@ -360,11 +375,11 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
-                  <AlertDialogHeader><AlertDialogTitle>Delete This Image?</AlertDialogTitle></AlertDialogHeader>
-                  <AlertDialogDescription>Are you sure you want to delete this copy of "{image.name}"? This action cannot be undone.</AlertDialogDescription>
+                  <AlertDialogHeader><AlertDialogTitle>¿Eliminar esta Imagen?</AlertDialogTitle></AlertDialogHeader>
+                  <AlertDialogDescription>¿Estás seguro que quieres eliminar esta copia de "{image.name}"? Esta acción no se puede deshacer.</AlertDialogDescription>
                   <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">Delete This Copy</AlertDialogAction>
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">Eliminar esta Copia</AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
@@ -377,11 +392,11 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
-                <AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle></AlertDialogHeader>
-                <AlertDialogDescription>This action cannot be undone. This will permanently delete "{image.name}".</AlertDialogDescription>
+                <AlertDialogHeader><AlertDialogTitle>¿Estás seguro?</AlertDialogTitle></AlertDialogHeader>
+                <AlertDialogDescription>Esta acción no se puede deshacer. Esto eliminará permanentemente "{image.name}".</AlertDialogDescription>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">Eliminar</AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
@@ -413,6 +428,14 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
           isOpen={isRenameDialogOpen}
           onClose={() => setIsRenameDialogOpen(false)}
           onRenameSuccess={handleRenameSuccess}
+        />
+      )}
+      {isImageDetailsModalOpen && imageUrl && (
+        <ImageDetailsModal
+          image={image}
+          isOpen={isImageDetailsModalOpen}
+          onClose={() => setIsImageDetailsModalOpen(false)}
+          onUpdate={onUpdate}
         />
       )}
     </>
