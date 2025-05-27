@@ -8,12 +8,11 @@ export class PicStackDexie extends Dexie {
 
   constructor() {
     super('PicStackDB');
-    this.version(4).stores({ // Incremented version for new index
-      images: '++id, name, *tags, createdAt, isFavorite, isProtected, *collectionIds, mimeType, isPotentialDuplicate, hasTags', // Added hasTags
+    this.version(4).stores({
+      images: '++id, name, *tags, createdAt, isFavorite, isProtected, *collectionIds, mimeType, isPotentialDuplicate, hasTags',
       collections: '++id, name, parentId, createdAt',
     }).upgrade(async tx => {
       console.log("Upgrading DB from version 3 to 4 (if applicable)");
-      // Add hasTags field to existing images
       await tx.table("images").toCollection().modify(image => {
         image.hasTags = !!(image.tags && image.tags.length > 0);
       });
@@ -66,7 +65,7 @@ export const addImage = async (image: Omit<ImageMetadata, 'id' | 'createdAt' | '
     collectionIds: image.collectionIds || [],
     transform: image.transform || { rotate: 0 },
     isPotentialDuplicate: image.isPotentialDuplicate || false,
-    hasTags: !!(image.tags && image.tags.length > 0), // Set hasTags
+    hasTags: !!(image.tags && image.tags.length > 0),
   };
   return db.images.add(newImage);
 };
@@ -76,28 +75,54 @@ export const getImages = async (filter?: {
   searchTerm?: string;
   reviewDuplicates?: boolean;
   showUnassigned?: boolean;
-  showUntagged?: boolean; // New filter
+  showUntagged?: boolean;
 }): Promise<ImageMetadata[]> => {
   let imagesQuery: Dexie.Collection<ImageMetadata, number>;
+  let finalImages: ImageMetadata[];
 
   if (filter?.reviewDuplicates) {
-    imagesQuery = db.images.filter(img => img.isPotentialDuplicate === true);
-  } else if (filter?.showUnassigned) {
+    const potentialDuplicates = await db.images.filter(img => img.isPotentialDuplicate === true).toArray();
+    potentialDuplicates.sort((a, b) => {
+      const nameA = a.name.toLowerCase();
+      const nameB = b.name.toLowerCase();
+      if (nameA < nameB) return -1;
+      if (nameA > nameB) return 1;
+      // If names are the same, sort by creation date (older first) or ID
+      if (a.createdAt.getTime() < b.createdAt.getTime()) return -1;
+      if (a.createdAt.getTime() > b.createdAt.getTime()) return 1;
+      return (a.id || 0) - (b.id || 0); 
+    });
+    finalImages = potentialDuplicates;
+
+    // Apply search term if present, after specific duplicate sorting
+    if (filter?.searchTerm && filter.searchTerm.trim() !== '') {
+      const searchTerm = filter.searchTerm.trim().toLowerCase();
+      // For duplicate review, search usually applies to name/tags only
+      finalImages = finalImages.filter(img =>
+        img.name.toLowerCase().includes(searchTerm) ||
+        (img.tags && img.tags.some(tag => tag.toLowerCase().includes(searchTerm)))
+      );
+    }
+    return finalImages;
+  }
+
+  // Existing logic for other filters
+  if (filter?.showUnassigned) {
     imagesQuery = db.images.filter(img =>
       !img.isPotentialDuplicate &&
       (!img.collectionIds || img.collectionIds.length === 0)
     );
-  } else if (filter?.showUntagged) { // New filter condition
+  } else if (filter?.showUntagged) {
     imagesQuery = db.images.filter(img => 
       !img.isPotentialDuplicate &&
-      img.hasTags === false // Using the new indexed field
+      img.hasTags === false
     );
   } else if (filter?.collectionId !== null && filter?.collectionId !== undefined) {
     const selectedCollectionId = filter.collectionId;
     imagesQuery = db.images.filter(img =>
       !img.isPotentialDuplicate &&
       ((img.collectionIds && img.collectionIds.includes(selectedCollectionId)) ||
-       (!img.collectionIds || img.collectionIds.length === 0)) 
+       (!img.isPotentialDuplicate && (!img.collectionIds || img.collectionIds.length === 0)))
     );
   } else { 
     imagesQuery = db.images.filter(img => !img.isPotentialDuplicate);
@@ -105,28 +130,28 @@ export const getImages = async (filter?: {
 
   let sortedImages = await imagesQuery.sortBy('createdAt');
   sortedImages.reverse(); 
+  finalImages = sortedImages;
 
   if (filter?.searchTerm && filter.searchTerm.trim() !== '') {
     const searchTerm = filter.searchTerm.trim();
-    
+    const termLower = searchTerm.toLowerCase();
+    const allCollections = await getCollections(); 
+
     if (searchTerm.startsWith('tag:')) {
       const tagName = searchTerm.substring(4).toLowerCase();
-      return sortedImages.filter(img => 
+      finalImages = finalImages.filter(img => 
         img.tags && img.tags.some(tag => tag.toLowerCase() === tagName)
       );
     } else {
-      const term = searchTerm.toLowerCase();
-      const allCollections = await db.collections.toArray();
-
-      return sortedImages.filter(img => {
-        if (img.name.toLowerCase().includes(term)) return true;
-        if (img.tags && img.tags.some(tag => tag.toLowerCase().includes(term))) return true;
+      finalImages = finalImages.filter(img => {
+        if (img.name.toLowerCase().includes(termLower)) return true;
+        if (img.tags && img.tags.some(tag => tag.toLowerCase().includes(termLower))) return true;
         
         if (img.collectionIds && img.collectionIds.length > 0) {
           const imageCollectionNames = img.collectionIds
             .map(id => allCollections.find(c => c.id === id)?.name)
-            .filter(name => !!name) as string[];
-          if (imageCollectionNames.some(name => name.toLowerCase().includes(term))) {
+            .filter((name): name is string => !!name); 
+          if (imageCollectionNames.some(name => name.toLowerCase().includes(termLower))) {
             return true;
           }
         }
@@ -135,7 +160,7 @@ export const getImages = async (filter?: {
     }
   }
 
-  return sortedImages;
+  return finalImages;
 };
 
 
@@ -144,7 +169,6 @@ export const getImageById = async (id: number): Promise<ImageMetadata | undefine
 };
 
 export const updateImage = async (id: number, changes: Partial<ImageMetadata>): Promise<number> => {
-  // If tags are being updated, also update hasTags
   if (changes.tags !== undefined) {
     changes.hasTags = !!(changes.tags && changes.tags.length > 0);
   }
@@ -244,7 +268,7 @@ export const exportData = async (): Promise<{ metadataJson: string, imageFiles: 
   console.log(`[EXPORT DEBUG] Exporting: Found ${images.length} images and ${collections.length} collections.`);
 
   const metadata = {
-    version: 4, // Current DB schema version for import logic
+    version: 4, 
     collections: collections.map(c => {
       const { children, imageCount, ...serializableCollection } = c;
       return {
@@ -266,11 +290,11 @@ export const exportData = async (): Promise<{ metadataJson: string, imageFiles: 
         ...serializableImageBase,
         fileNameInZip: fileNameInZip,
         createdAt: img.createdAt ? img.createdAt.toISOString() : new Date().toISOString(),
-        tags: img.tags || [], // ensure tags is an array
-        collectionIds: img.collectionIds || [], // ensure collectionIds is an array
+        tags: img.tags || [], 
+        collectionIds: img.collectionIds || [],
         transform: img.transform || { rotate: 0 },
         isPotentialDuplicate: img.isPotentialDuplicate || false,
-        hasTags: img.hasTags, // Export hasTags
+        hasTags: img.hasTags,
       };
     }),
   };
@@ -414,7 +438,7 @@ export const importData = async (metadataJson: string, files: File[]): Promise<s
           collectionIds: newImageCollectionIds,
           transform: imgJson.transform && typeof imgJson.transform.rotate === 'number' ? imgJson.transform : { rotate: 0 },
           isPotentialDuplicate: typeof imgJson.isPotentialDuplicate === 'boolean' ? imgJson.isPotentialDuplicate : false,
-          hasTags: typeof imgJson.hasTags === 'boolean' ? imgJson.hasTags : (importedTags.length > 0), // Import or derive hasTags
+          hasTags: typeof imgJson.hasTags === 'boolean' ? imgJson.hasTags : (importedTags.length > 0),
         };
 
         if (!(imageToAdd.createdAt instanceof Date) || isNaN(imageToAdd.createdAt.getTime())) {
@@ -458,6 +482,10 @@ export const deleteAllData = async (): Promise<void> => {
 // Stats
 export const getTotalImageCount = async (): Promise<number> => {
   return db.images.filter(img => !img.isPotentialDuplicate).count();
+};
+
+export const getPotentialDuplicatesCount = async (): Promise<number> => {
+  return db.images.filter(img => img.isPotentialDuplicate === true).count();
 };
 
 export const getUnassignedImageCount = async (): Promise<number> => {
