@@ -10,10 +10,11 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { db, updateImage } from "@/lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Heart, Loader2 } from "lucide-react";
+import { Heart, Loader2, ClipboardCopy } from "lucide-react"; // Added ClipboardCopy
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { Textarea } from "@/components/ui/textarea";
+import { Label } from '@/components/ui/label';
 
 interface ImageDetailsModalProps {
   image: ImageMetadata;
@@ -57,6 +58,20 @@ export default function ImageDetailsModal({ image, isOpen, onClose, onUpdate }: 
     }
   };
 
+  const handleCopyDescription = async () => {
+    if (!image.description) {
+      toast({ variant: "destructive", title: "Error", description: "No hay descripción para copiar." });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(image.description);
+      toast({ title: "Copiado", description: "Descripción copiada al portapapeles." });
+    } catch (err) {
+      toast({ variant: "destructive", title: "Error al Copiar", description: "No se pudo copiar la descripción." });
+      console.error('Failed to copy description: ', err);
+    }
+  };
+
   if (!image) return null;
 
   return (
@@ -96,30 +111,39 @@ export default function ImageDetailsModal({ image, isOpen, onClose, onUpdate }: 
             {/* Columna de Detalles */}
             <div className="md:col-span-2 space-y-4">
               <div>
-                <h3 className="text-sm font-medium text-muted-foreground mb-1">ID</h3>
+                <Label className="text-sm font-medium text-muted-foreground mb-1">ID</Label>
                 <p className="text-sm">{image.id ?? 'N/A'}</p>
               </div>
               <div>
-                <h3 className="text-sm font-medium text-muted-foreground mb-1">Nombre Original</h3>
+                <Label className="text-sm font-medium text-muted-foreground mb-1">Nombre Original</Label>
                 <p className="text-sm break-all">{image.name}</p>
               </div>
               <div>
-                <h3 className="text-sm font-medium text-muted-foreground mb-1">Fecha de Creación</h3>
+                <Label className="text-sm font-medium text-muted-foreground mb-1">Fecha de Creación</Label>
                 <p className="text-sm">{new Date(image.createdAt).toLocaleString()}</p>
               </div>
               <div>
-                <h3 className="text-sm font-medium text-muted-foreground mb-1">Dimensiones</h3>
+                <Label className="text-sm font-medium text-muted-foreground mb-1">Dimensiones</Label>
                 <p className="text-sm">{image.width} x {image.height} px</p>
               </div>
               <div>
-                <h3 className="text-sm font-medium text-muted-foreground mb-1">Tipo de Imagen</h3>
+                <Label className="text-sm font-medium text-muted-foreground mb-1">Tipo de Imagen</Label>
                 <p className="text-sm">{image.mimeType}</p>
               </div>
               
               <div>
-                <h3 className="text-sm font-medium text-muted-foreground mb-1">Descripción (Prompt IA)</h3>
+                <div className="flex justify-between items-center mb-1">
+                  <Label htmlFor="image-description-area" className="text-sm font-medium text-muted-foreground">Descripción (Generada por IA)</Label>
+                  {image.description && image.description.trim() !== "" && (
+                    <Button variant="outline" size="sm" onClick={handleCopyDescription} className="h-7 px-2 py-1 text-xs">
+                      <ClipboardCopy className="mr-1 h-3 w-3" />
+                      Copiar
+                    </Button>
+                  )}
+                </div>
                 <Textarea 
-                  value={image.description || "Sin descripción generada."} 
+                  id="image-description-area"
+                  value={image.description && image.description.trim() !== "" ? image.description : "Sin descripción generada."} 
                   readOnly 
                   className="text-sm h-24 bg-muted/50 border-input" 
                   aria-label="Descripción de la imagen"
@@ -127,7 +151,7 @@ export default function ImageDetailsModal({ image, isOpen, onClose, onUpdate }: 
               </div>
 
               <div>
-                <h3 className="text-sm font-medium text-muted-foreground mb-1">Etiquetas</h3>
+                <Label className="text-sm font-medium text-muted-foreground mb-1">Etiquetas</Label>
                 {image.tags && image.tags.length > 0 ? (
                   <div className="flex flex-wrap gap-1">
                     {image.tags.map(tag => <Badge key={tag} variant="secondary">{tag}</Badge>)}
@@ -138,7 +162,7 @@ export default function ImageDetailsModal({ image, isOpen, onClose, onUpdate }: 
               </div>
 
               <div>
-                <h3 className="text-sm font-medium text-muted-foreground mb-1">Colecciones</h3>
+                <Label className="text-sm font-medium text-muted-foreground mb-1">Colecciones</Label>
                 {imageCollections === undefined ? (
                    <p className="text-sm text-muted-foreground italic">Cargando colecciones...</p>
                 ) : imageCollections && imageCollections.length > 0 ? (
