@@ -5,22 +5,26 @@ import { useState, useEffect, useCallback } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import AppLayout from '@/components/layout/AppLayout';
 import ImageGrid from '@/components/image/ImageGrid';
-import { db, getImages } from '@/lib/db';
+import { db, getImages, getImageById, updateImage, blobToDataURL } from '@/lib/db';
 import type { ImageMetadata } from '@/types';
-import { Loader2, CheckSquare, Square, FolderPlus } from 'lucide-react';
+import { Loader2, CheckSquare, Square, FolderPlus, FileText } from 'lucide-react'; // Added FileText
 import { Button } from '@/components/ui/button';
 import BulkAddToCollectionDialog from '@/components/collections/BulkAddToCollectionDialog';
+import { useToast } from "@/hooks/use-toast";
+import { describeImage } from '@/ai/flows/describe-image-flow';
 
 export default function HomePage() {
+  const { toast } = useToast();
   const [currentCollectionId, setCurrentCollectionId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [reviewDuplicatesMode, setReviewDuplicatesMode] = useState<boolean>(false);
   const [showUnassignedMode, setShowUnassignedMode] = useState<boolean>(false);
   const [showUntaggedMode, setShowUntaggedMode] = useState<boolean>(false);
-  const [showUndescribedMode, setShowUndescribedMode] = useState<boolean>(false); // New state
+  const [showUndescribedMode, setShowUndescribedMode] = useState<boolean>(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedImageIds, setSelectedImageIds] = useState<Set<number>>(new Set());
   const [isBulkAddToCollectionDialogOpen, setIsBulkAddToCollectionDialogOpen] = useState(false);
+  const [isBulkDescribing, setIsBulkDescribing] = useState(false); // New state for bulk description generation
 
   const images = useLiveQuery(
     async () => {
@@ -28,7 +32,7 @@ export default function HomePage() {
         reviewDuplicates: reviewDuplicatesMode,
         showUnassigned: showUnassignedMode,
         showUntagged: showUntaggedMode,
-        showUndescribed: showUndescribedMode, // Pass new filter
+        showUndescribed: showUndescribedMode,
       };
       if (!reviewDuplicatesMode && !showUnassignedMode && !showUntaggedMode && !showUndescribedMode && currentCollectionId !== null) {
         filter.collectionId = currentCollectionId;
@@ -38,7 +42,7 @@ export default function HomePage() {
       }
       return getImages(filter);
     },
-    [currentCollectionId, searchTerm, refreshKey, reviewDuplicatesMode, showUnassignedMode, showUntaggedMode, showUndescribedMode], // Add showUndescribedMode
+    [currentCollectionId, searchTerm, refreshKey, reviewDuplicatesMode, showUnassignedMode, showUntaggedMode, showUndescribedMode],
     []
   );
 
@@ -52,7 +56,7 @@ export default function HomePage() {
     if (reviewDuplicatesMode) setReviewDuplicatesMode(false);
     if (showUnassignedMode) setShowUnassignedMode(false);
     if (showUntaggedMode) setShowUntaggedMode(false);
-    if (showUndescribedMode) setShowUndescribedMode(false); // Deactivate new mode
+    if (showUndescribedMode) setShowUndescribedMode(false);
     setSearchTerm(''); 
     setSelectedImageIds(new Set()); 
   }, [reviewDuplicatesMode, showUnassignedMode, showUntaggedMode, showUndescribedMode]);
@@ -72,7 +76,7 @@ export default function HomePage() {
       setCurrentCollectionId(null);
       setShowUnassignedMode(false);
       setShowUntaggedMode(false);
-      setShowUndescribedMode(false); // Deactivate new mode
+      setShowUndescribedMode(false);
       setSearchTerm(''); 
     }
     setSelectedImageIds(new Set()); 
@@ -85,7 +89,7 @@ export default function HomePage() {
       setCurrentCollectionId(null);
       setReviewDuplicatesMode(false);
       setShowUntaggedMode(false);
-      setShowUndescribedMode(false); // Deactivate new mode
+      setShowUndescribedMode(false);
       setSearchTerm(''); 
     }
     setSelectedImageIds(new Set()); 
@@ -98,13 +102,13 @@ export default function HomePage() {
       setCurrentCollectionId(null);
       setReviewDuplicatesMode(false);
       setShowUnassignedMode(false);
-      setShowUndescribedMode(false); // Deactivate new mode
+      setShowUndescribedMode(false);
       setSearchTerm('');
     }
     setSelectedImageIds(new Set());
   }, [showUntaggedMode]);
 
-  const toggleShowUndescribedMode = useCallback(() => { // New handler
+  const toggleShowUndescribedMode = useCallback(() => {
     const newMode = !showUndescribedMode;
     setShowUndescribedMode(newMode);
     if (newMode) {
@@ -146,6 +150,69 @@ export default function HomePage() {
     }
   };
 
+  const handleBulkGenerateDescriptions = async () => {
+    if (selectedImageIds.size === 0) {
+      toast({ variant: "destructive", title: "Sin Selección", description: "No hay imágenes seleccionadas para generar descripciones." });
+      return;
+    }
+
+    setIsBulkDescribing(true);
+    const imageIdArray = Array.from(selectedImageIds);
+    let successCount = 0;
+    let errorCount = 0;
+    const totalToProcess = imageIdArray.length;
+    let processedCount = 0;
+    
+    const progressToastId = 'bulk-describe-progress';
+    toast({
+      id: progressToastId,
+      title: "Procesando Descripciones...",
+      description: `0 de ${totalToProcess} imágenes procesadas.`,
+      duration: Infinity, // Keep toast until dismissed or updated
+    });
+
+    for (const imageId of imageIdArray) {
+      processedCount++;
+      try {
+        const image = await getImageById(imageId);
+        if (!image || !image.file) {
+          toast({ variant: "destructive", title: "Error", description: `No se encontró la imagen con ID ${imageId} o falta el archivo.` });
+          errorCount++;
+          continue;
+        }
+
+        const dataUri = await blobToDataURL(image.file);
+        const aiResult = await describeImage({ photoDataUri: dataUri });
+        await updateImage(imageId, { description: aiResult.description, hasDescription: aiResult.description.trim() !== "" });
+        successCount++;
+      } catch (error) {
+        errorCount++;
+        console.error(`Error generando descripción para imagen ID ${imageId}:`, error);
+        toast({
+          variant: "destructive",
+          title: "Fallo al Generar Descripción",
+          description: `No se pudo generar descripción para la imagen ID ${imageId}. ${ (error as Error).message.includes('429') ? 'Límite de API alcanzado.' : (error as Error).message }`
+        });
+      }
+      toast({ // Update progress toast
+        id: progressToastId,
+        title: "Procesando Descripciones...",
+        description: `${processedCount} de ${totalToProcess} imágenes procesadas.`,
+      });
+    }
+
+    toast.dismiss(progressToastId); // Dismiss progress toast
+    toast({
+      title: "Generación en Lote Finalizada",
+      description: `${successCount} descripciones generadas. ${errorCount > 0 ? `${errorCount} fallaron.` : ''}`,
+      duration: 5000,
+    });
+
+    setIsBulkDescribing(false);
+    handleImageUpdate();
+    handleDeselectAllImages();
+  };
+
 
   if (images === undefined) {
     return (
@@ -166,27 +233,31 @@ export default function HomePage() {
       isShowUnassignedMode={showUnassignedMode}
       onToggleShowUntagged={toggleShowUntaggedMode}
       isShowUntaggedMode={showUntaggedMode}
-      onToggleShowUndescribed={toggleShowUndescribedMode} // Pass new prop
-      isShowUndescribedMode={showUndescribedMode} // Pass new prop
+      onToggleShowUndescribed={toggleShowUndescribedMode}
+      isShowUndescribedMode={showUndescribedMode}
     >
       {selectedImageIds.size > 0 && (
         <div className="sticky top-0 z-[5] bg-background/80 backdrop-blur-sm p-2 mb-2 border-b rounded-md shadow-sm flex items-center justify-between gap-2">
           <p className="text-sm font-medium">
             {selectedImageIds.size} imagen{selectedImageIds.size === 1 ? '' : 'es'} seleccionada{selectedImageIds.size === 1 ? '' : 's'}
           </p>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {images && selectedImageIds.size !== images.length && (
-              <Button variant="outline" size="sm" onClick={handleSelectAllImages}>
+              <Button variant="outline" size="sm" onClick={handleSelectAllImages} disabled={isBulkDescribing}>
                 <CheckSquare className="mr-2 h-4 w-4" /> Seleccionar Todo
               </Button>
             )}
             {selectedImageIds.size > 0 && (
-              <Button variant="outline" size="sm" onClick={handleDeselectAllImages}>
+              <Button variant="outline" size="sm" onClick={handleDeselectAllImages} disabled={isBulkDescribing}>
                 <Square className="mr-2 h-4 w-4" /> Deseleccionar Todo
               </Button>
             )}
-            <Button variant="default" size="sm" onClick={handleOpenBulkAddToCollectionDialog}>
+            <Button variant="default" size="sm" onClick={handleOpenBulkAddToCollectionDialog} disabled={isBulkDescribing}>
               <FolderPlus className="mr-2 h-4 w-4" /> Añadir a Colección
+            </Button>
+            <Button variant="default" size="sm" onClick={handleBulkGenerateDescriptions} disabled={isBulkDescribing}>
+              {isBulkDescribing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
+              Generar Descripciones
             </Button>
           </div>
         </div>
@@ -204,7 +275,7 @@ export default function HomePage() {
         isReviewDuplicatesMode={reviewDuplicatesMode}
         isShowUnassignedMode={showUnassignedMode}
         isShowUntaggedMode={showUntaggedMode}
-        isShowUndescribedMode={showUndescribedMode} // Pass new prop
+        isShowUndescribedMode={showUndescribedMode}
         selectedImageIds={selectedImageIds}
         onImageToggleSelection={handleToggleImageSelection}
         searchTerm={searchTerm} 
@@ -223,5 +294,4 @@ export default function HomePage() {
     </AppLayout>
   );
 }
-
     
