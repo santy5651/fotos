@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, ChangeEvent } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import type { ImageMetadata, Collection } from "@/types";
@@ -10,11 +10,14 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { db, updateImage } from "@/lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Heart, Loader2, ClipboardCopy } from "lucide-react"; // Added ClipboardCopy
+import { Heart, Loader2, ClipboardCopy, RefreshCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { resizeToDimensions } from '@/lib/imageUtils'; // New import
+import { Separator } from '../ui/separator';
 
 interface ImageDetailsModalProps {
   image: ImageMetadata;
@@ -27,14 +30,28 @@ export default function ImageDetailsModal({ image, isOpen, onClose, onUpdate }: 
   const { toast } = useToast();
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isUpdatingFavorite, setIsUpdatingFavorite] = useState(false);
+  
+  // State for resizing
+  const [targetWidthStr, setTargetWidthStr] = useState<string>("");
+  const [targetHeightStr, setTargetHeightStr] = useState<string>("");
+  const [originalAspectRatio, setOriginalAspectRatio] = useState<number>(1);
+  const [isResizing, setIsResizing] = useState(false);
 
   useEffect(() => {
     if (image && image.file) {
       const url = URL.createObjectURL(image.file);
       setImageUrl(url);
+      
+      // Initialize resize inputs and aspect ratio
+      if (image.width && image.height) {
+        setTargetWidthStr(image.width.toString());
+        setTargetHeightStr(image.height.toString());
+        setOriginalAspectRatio(image.width / image.height);
+      }
+      
       return () => URL.revokeObjectURL(url);
     }
-  }, [image]);
+  }, [image, isOpen]); // Re-run if isOpen changes to re-initialize on modal open
 
   const imageCollections = useLiveQuery(async () => {
     if (image && image.collectionIds && image.collectionIds.length > 0) {
@@ -71,6 +88,85 @@ export default function ImageDetailsModal({ image, isOpen, onClose, onUpdate }: 
       console.error('Failed to copy description: ', err);
     }
   };
+
+  const handleWidthChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const newWidthValue = e.target.value;
+    setTargetWidthStr(newWidthValue);
+    if (newWidthValue && !isNaN(parseFloat(newWidthValue)) && originalAspectRatio !== 0) {
+      const numWidth = parseFloat(newWidthValue);
+      if (numWidth > 0) {
+        setTargetHeightStr(Math.round(numWidth / originalAspectRatio).toString());
+      } else {
+        setTargetHeightStr("");
+      }
+    } else if (!newWidthValue) {
+        setTargetHeightStr("");
+    }
+  };
+
+  const handleHeightChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const newHeightValue = e.target.value;
+    setTargetHeightStr(newHeightValue);
+    if (newHeightValue && !isNaN(parseFloat(newHeightValue)) && originalAspectRatio !== 0) {
+      const numHeight = parseFloat(newHeightValue);
+      if (numHeight > 0) {
+        setTargetWidthStr(Math.round(numHeight * originalAspectRatio).toString());
+      } else {
+        setTargetWidthStr("");
+      }
+    } else if (!newHeightValue) {
+       setTargetWidthStr("");
+    }
+  };
+
+  const handleApplyResize = async () => {
+    if (!image || !image.file || image.id === undefined) {
+      toast({ variant: "destructive", title: "Error", description: "Información de imagen no disponible." });
+      return;
+    }
+
+    const newWidth = parseInt(targetWidthStr, 10);
+    const newHeight = parseInt(targetHeightStr, 10);
+
+    if (isNaN(newWidth) || isNaN(newHeight) || newWidth <= 0 || newHeight <= 0) {
+      toast({ variant: "destructive", title: "Dimensiones Inválidas", description: "Por favor, ingrese un ancho y alto válidos y positivos." });
+      return;
+    }
+    
+    // Check if dimensions actually changed
+    if (newWidth === image.width && newHeight === image.height) {
+        toast({ title: "Sin Cambios", description: "Las dimensiones son las mismas que las actuales." });
+        return;
+    }
+
+    setIsResizing(true);
+    try {
+      const resizedFile = await resizeToDimensions(image.file, newWidth, newHeight);
+      await updateImage(image.id, {
+        file: resizedFile,
+        width: newWidth,
+        height: newHeight,
+        // mimeType might change if fallback in resizeToDimensions is used, but File object carries new type
+        mimeType: resizedFile.type 
+      });
+      toast({ title: "Imagen Redimensionada", description: `"${image.name}" ha sido redimensionada a ${newWidth}x${newHeight}px.` });
+      onUpdate();
+      onClose(); // Close modal on success
+    } catch (error) {
+      console.error("Error resizing image:", error);
+      toast({ variant: "destructive", title: "Fallo al Redimensionar", description: (error as Error).message });
+    } finally {
+      setIsResizing(false);
+    }
+  };
+  
+  const resetDimensionsToOriginal = () => {
+    if (image && image.width && image.height) {
+      setTargetWidthStr(image.width.toString());
+      setTargetHeightStr(image.height.toString());
+    }
+  };
+
 
   if (!image) return null;
 
@@ -123,7 +219,7 @@ export default function ImageDetailsModal({ image, isOpen, onClose, onUpdate }: 
                 <p className="text-sm">{new Date(image.createdAt).toLocaleString()}</p>
               </div>
               <div>
-                <Label className="text-sm font-medium text-muted-foreground mb-1">Dimensiones</Label>
+                <Label className="text-sm font-medium text-muted-foreground mb-1">Dimensiones Actuales</Label>
                 <p className="text-sm">{image.width} x {image.height} px</p>
               </div>
               <div>
@@ -175,6 +271,50 @@ export default function ImageDetailsModal({ image, isOpen, onClose, onUpdate }: 
               </div>
             </div>
           </div>
+          
+          <Separator className="my-6" />
+
+          {/* Sección de Redimensionar Imagen */}
+          <div className="space-y-4 py-4">
+            <h3 className="text-md font-semibold">Redimensionar Imagen</h3>
+            <p className="text-sm text-muted-foreground">
+              Ingrese nuevas dimensiones. La relación de aspecto se mantendrá automáticamente.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+              <div className="space-y-1">
+                <Label htmlFor="new-width">Nuevo Ancho (px)</Label>
+                <Input
+                  id="new-width"
+                  type="number"
+                  value={targetWidthStr}
+                  onChange={handleWidthChange}
+                  placeholder="Ancho"
+                  min="1"
+                  disabled={isResizing}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="new-height">Nuevo Alto (px)</Label>
+                <Input
+                  id="new-height"
+                  type="number"
+                  value={targetHeightStr}
+                  onChange={handleHeightChange}
+                  placeholder="Alto"
+                  min="1"
+                  disabled={isResizing}
+                />
+              </div>
+               <Button onClick={resetDimensionsToOriginal} variant="outline" disabled={isResizing} className="w-full sm:w-auto">
+                <RefreshCcw className="mr-2 h-4 w-4" /> Restablecer
+              </Button>
+            </div>
+            <Button onClick={handleApplyResize} disabled={isResizing || !targetWidthStr || !targetHeightStr || (parseInt(targetWidthStr) === image.width && parseInt(targetHeightStr) === image.height) }>
+              {isResizing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Aplicar Redimensión
+            </Button>
+          </div>
+
         </ScrollArea>
         <DialogFooter>
           <DialogClose asChild>
