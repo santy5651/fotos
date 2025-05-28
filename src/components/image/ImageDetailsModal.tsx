@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { resizeToDimensions } from '@/lib/imageUtils'; // New import
+import { resizeToDimensions } from '@/lib/imageUtils';
 import { Separator } from '../ui/separator';
 
 interface ImageDetailsModalProps {
@@ -42,7 +42,6 @@ export default function ImageDetailsModal({ image, isOpen, onClose, onUpdate }: 
       const url = URL.createObjectURL(image.file);
       setImageUrl(url);
       
-      // Initialize resize inputs and aspect ratio
       if (image.width && image.height) {
         setTargetWidthStr(image.width.toString());
         setTargetHeightStr(image.height.toString());
@@ -51,7 +50,7 @@ export default function ImageDetailsModal({ image, isOpen, onClose, onUpdate }: 
       
       return () => URL.revokeObjectURL(url);
     }
-  }, [image, isOpen]); // Re-run if isOpen changes to re-initialize on modal open
+  }, [image, isOpen]);
 
   const imageCollections = useLiveQuery(async () => {
     if (image && image.collectionIds && image.collectionIds.length > 0) {
@@ -133,7 +132,6 @@ export default function ImageDetailsModal({ image, isOpen, onClose, onUpdate }: 
       return;
     }
     
-    // Check if dimensions actually changed
     if (newWidth === image.width && newHeight === image.height) {
         toast({ title: "Sin Cambios", description: "Las dimensiones son las mismas que las actuales." });
         return;
@@ -146,12 +144,11 @@ export default function ImageDetailsModal({ image, isOpen, onClose, onUpdate }: 
         file: resizedFile,
         width: newWidth,
         height: newHeight,
-        // mimeType might change if fallback in resizeToDimensions is used, but File object carries new type
         mimeType: resizedFile.type 
       });
       toast({ title: "Imagen Redimensionada", description: `"${image.name}" ha sido redimensionada a ${newWidth}x${newHeight}px.` });
       onUpdate();
-      onClose(); // Close modal on success
+      onClose(); 
     } catch (error) {
       console.error("Error resizing image:", error);
       toast({ variant: "destructive", title: "Fallo al Redimensionar", description: (error as Error).message });
@@ -178,7 +175,6 @@ export default function ImageDetailsModal({ image, isOpen, onClose, onUpdate }: 
         </DialogHeader>
         <ScrollArea className="flex-grow pr-6 -mr-6"> 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 py-4">
-            {/* Columna de Imagen */}
             <div className="md:col-span-1 flex flex-col items-center gap-4">
               {imageUrl ? (
                 <div className="relative w-full aspect-square rounded-md overflow-hidden border">
@@ -204,7 +200,6 @@ export default function ImageDetailsModal({ image, isOpen, onClose, onUpdate }: 
               </Button>
             </div>
 
-            {/* Columna de Detalles */}
             <div className="md:col-span-2 space-y-4">
               <div>
                 <Label className="text-sm font-medium text-muted-foreground mb-1">ID</Label>
@@ -274,14 +269,13 @@ export default function ImageDetailsModal({ image, isOpen, onClose, onUpdate }: 
           
           <Separator className="my-6" />
 
-          {/* Sección de Redimensionar Imagen */}
           <div className="space-y-4 py-4">
             <h3 className="text-md font-semibold">Redimensionar Imagen</h3>
             <p className="text-sm text-muted-foreground">
               Ingrese nuevas dimensiones. La relación de aspecto se mantendrá automáticamente.
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
-              <div className="space-y-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end">
+              <div className="space-y-1 md:col-span-1">
                 <Label htmlFor="new-width">Nuevo Ancho (px)</Label>
                 <Input
                   id="new-width"
@@ -291,9 +285,10 @@ export default function ImageDetailsModal({ image, isOpen, onClose, onUpdate }: 
                   placeholder="Ancho"
                   min="1"
                   disabled={isResizing}
+                  className="w-full"
                 />
               </div>
-              <div className="space-y-1">
+              <div className="space-y-1 md:col-span-1">
                 <Label htmlFor="new-height">Nuevo Alto (px)</Label>
                 <Input
                   id="new-height"
@@ -303,16 +298,21 @@ export default function ImageDetailsModal({ image, isOpen, onClose, onUpdate }: 
                   placeholder="Alto"
                   min="1"
                   disabled={isResizing}
+                  className="w-full"
                 />
               </div>
-               <Button onClick={resetDimensionsToOriginal} variant="outline" disabled={isResizing} className="w-full sm:w-auto">
+              <Button onClick={resetDimensionsToOriginal} variant="outline" disabled={isResizing} className="w-full md:col-span-1">
                 <RefreshCcw className="mr-2 h-4 w-4" /> Restablecer
               </Button>
+              <Button 
+                onClick={handleApplyResize} 
+                disabled={isResizing || !targetWidthStr || !targetHeightStr || (parseInt(targetWidthStr) === image.width && parseInt(targetHeightStr) === image.height) }
+                className="w-full md:col-span-1"
+              >
+                {isResizing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Aplicar Redimensión
+              </Button>
             </div>
-            <Button onClick={handleApplyResize} disabled={isResizing || !targetWidthStr || !targetHeightStr || (parseInt(targetWidthStr) === image.width && parseInt(targetHeightStr) === image.height) }>
-              {isResizing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Aplicar Redimensión
-            </Button>
           </div>
 
         </ScrollArea>
