@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useRef } from 'react'; // Added useRef
+import React, { useState, useRef } from 'react'; 
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -11,9 +11,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Settings, Download, Upload, Trash2, Loader2 } from 'lucide-react';
+import { Settings, Download, Upload, Trash2, Loader2, FileJson } from 'lucide-react'; // Added FileJson
 import { useToast } from '@/hooks/use-toast';
-import { exportData, importData, deleteAllData } from '@/lib/db';
+import { exportData, importData, deleteAllData, exportDataAsSingleJson } from '@/lib/db'; // Added exportDataAsSingleJson
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
@@ -23,15 +23,16 @@ import { Input } from '../ui/input';
 export default function SettingsDropdown() {
   const { toast } = useToast();
   const [isImporting, setIsImporting] = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null); // Ref for the file input
+  const [isExportingZip, setIsExportingZip] = useState(false); // Renamed for clarity
+  const [isExportingJson, setIsExportingJson] = useState(false); // New state for JSON export
+  const fileInputRef = useRef<HTMLInputElement>(null); 
 
-  const handleExport = async () => {
-    setIsExporting(true);
-    console.log("[EXPORT DEBUG] Starting data export...");
+  const handleExportZip = async () => {
+    setIsExportingZip(true);
+    console.log("[EXPORT_ZIP DEBUG] Starting data export (ZIP)...");
     try {
       const { metadataJson, imageFiles } = await exportData();
-      console.log("[EXPORT DEBUG] Data prepared for export. Metadata JSON length:", metadataJson.length, "Number of image files:", imageFiles.length);
+      console.log("[EXPORT_ZIP DEBUG] Data prepared for export. Metadata JSON length:", metadataJson.length, "Number of image files:", imageFiles.length);
       const zip = new JSZip();
       zip.file("metadata.json", metadataJson);
       const imagesFolder = zip.folder("images");
@@ -43,18 +44,34 @@ export default function SettingsDropdown() {
       
       const zipBlob = await zip.generateAsync({ type: "blob" });
       saveAs(zipBlob, "picstack_local_export.zip");
-      toast({ title: "Export Successful", description: "Data exported as a zip file." });
-      console.log("[EXPORT DEBUG] Export completed and zip saved.");
+      toast({ title: "Export ZIP Successful", description: "Data exported as a ZIP file." });
+      console.log("[EXPORT_ZIP DEBUG] Export completed and ZIP saved.");
     } catch (error) {
-      console.error("[EXPORT DEBUG] Export error:", error);
-      toast({ variant: "destructive", title: "Export Failed", description: (error as Error).message });
+      console.error("[EXPORT_ZIP DEBUG] Export error:", error);
+      toast({ variant: "destructive", title: "Export ZIP Failed", description: (error as Error).message });
     }
-    setIsExporting(false);
+    setIsExportingZip(false);
   };
+
+  const handleExportSingleJsonFile = async () => {
+    setIsExportingJson(true);
+    console.log("[EXPORT_JSON DEBUG] Starting data export (Single JSON)...");
+    try {
+      const singleJsonString = await exportDataAsSingleJson();
+      const blob = new Blob([singleJsonString], { type: "application/json;charset=utf-8" });
+      saveAs(blob, "picstack_data.json");
+      toast({ title: "Export JSON Successful", description: "Data exported as a single JSON file." });
+      console.log("[EXPORT_JSON DEBUG] Export completed and JSON file saved.");
+    } catch (error) {
+      console.error("[EXPORT_JSON DEBUG] Export error:", error);
+      toast({ variant: "destructive", title: "Export JSON Failed", description: (error as Error).message });
+    }
+    setIsExportingJson(false);
+  };
+
 
   const handleTriggerImport = () => {
     console.log("[IMPORT DEBUG] 'Import Data' menu item selected. Attempting to click file input programmatically.");
-    // Reset the file input before clicking to ensure onChange fires even if the same file is selected
     if (fileInputRef.current) {
       fileInputRef.current.value = ''; 
     }
@@ -63,7 +80,7 @@ export default function SettingsDropdown() {
 
   const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
     console.log("[IMPORT DEBUG] handleImport function HAS BEEN TRIGGERED.");
-    setIsImporting(true); // Set loading state at the beginning
+    setIsImporting(true); 
 
     const file = event.target.files?.[0];
 
@@ -71,11 +88,18 @@ export default function SettingsDropdown() {
       console.log("[IMPORT DEBUG] No file selected for import. Aborting.");
       toast({ variant: "destructive", title: "Import Canceled", description: "No file was selected." });
       setIsImporting(false); 
-      // event.target.value = ''; // Already handled by handleTriggerImport or input's onClick
       return;
     }
     
     console.log("[IMPORT DEBUG] File selected for import:", { name: file.name, size: file.size, type: file.type });
+    
+    // Assuming import is still for ZIP format. If JSON import is needed, this logic needs to change.
+    if (file.type !== 'application/zip' && !file.name.endsWith('.zip')) {
+        toast({ variant: "destructive", title: "Import Error", description: "Invalid file type. Please select a .zip file for import." });
+        setIsImporting(false);
+        if (event.target) event.target.value = '';
+        return;
+    }
     
     try {
       console.log("[IMPORT DEBUG] Attempting to load ZIP with JSZip...");
@@ -89,13 +113,11 @@ export default function SettingsDropdown() {
         console.error("[IMPORT DEBUG] metadata.json not found in zip.");
         toast({ variant: "destructive", title: "Import Error", description: "metadata.json not found in the selected ZIP file." });
         setIsImporting(false);
-        // event.target.value = ''; // Already handled
         return;
       }
       
       const metadataJson = await metadataFile.async("string");
       console.log("[IMPORT DEBUG] metadata.json content retrieved. Length:", metadataJson.length);
-      // console.debug("[IMPORT DEBUG] Metadata JSON content (first 500 chars):", metadataJson.substring(0, 500));
 
 
       const imageFilesPromises: Promise<File>[] = [];
@@ -115,7 +137,6 @@ export default function SettingsDropdown() {
       
       const imageFiles = await Promise.all(imageFilesPromises);
       console.log(`[IMPORT DEBUG] Successfully prepared ${imageFiles.length} image files from zip.`);
-      // imageFiles.forEach(f => console.debug("[IMPORT DEBUG] Prepared file details:", {name: f.name, size: f.size, type: f.type}));
 
       console.log("[IMPORT DEBUG] Calling db.importData with prepared metadata and files...");
       const warnings = await importData(metadataJson, imageFiles);
@@ -127,15 +148,11 @@ export default function SettingsDropdown() {
         toast({ title: "Import Successful", description: "Data imported successfully. You may need to refresh the page." });
       }
       
-      // console.log("[IMPORT DEBUG] Page reload has been temporarily REMOVED for debugging. Manually refresh if needed.");
-      // Consider prompting user to refresh or automatically refreshing after a delay.
-      
     } catch (error) {
       console.error("[IMPORT DEBUG] Critical error during import process in SettingsDropdown:", error);
       toast({ variant: "destructive", title: "Import Failed Critically", description: `An unexpected error occurred: ${(error as Error).message}. Check console for details.` });
     } finally {
       setIsImporting(false);
-      // Reset file input value again in `finally` to be absolutely sure
       if (event.target) {
         event.target.value = '';
       }
@@ -149,43 +166,46 @@ export default function SettingsDropdown() {
       await deleteAllData();
       toast({ title: "All Data Deleted", description: "All local data has been cleared." });
       console.log("All data deleted. Reloading page...");
-      window.location.reload(); // Reload to reflect cleared state
+      window.location.reload(); 
     } catch (error) {
       console.error("Deletion Failed:", error);
       toast({ variant: "destructive", title: "Deletion Failed", description: (error as Error).message });
     }
   };
 
+  const anyOperationInProgress = isImporting || isExportingZip || isExportingJson;
+
   return (
     <>
-      {/* Hidden file input, controlled by ref */}
       <Input 
         ref={fileInputRef}
         type="file"
-        accept=".zip"
+        accept=".zip" // Keep accepting .zip for the current import logic
         className="hidden"
         onChange={handleImport}
-        // onClick={(e) => { (e.target as HTMLInputElement).value = ''; }} // Clears the input on click, allowing same file selection
       />
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="icon">
-            <Settings className="h-5 w-5" />
+          <Button variant="outline" size="icon" disabled={anyOperationInProgress}>
+            {anyOperationInProgress ? <Loader2 className="h-5 w-5 animate-spin" /> : <Settings className="h-5 w-5" />}
             <span className="sr-only">Settings</span>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
           <DropdownMenuLabel>App Settings</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={handleExport} disabled={isExporting || isImporting}>
-            {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-            Export Data
+          <DropdownMenuItem onClick={handleExportZip} disabled={anyOperationInProgress}>
+            {isExportingZip ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+            Export Data (ZIP)
           </DropdownMenuItem>
-          {/* Updated DropdownMenuItem for Import */}
-          <DropdownMenuItem onSelect={handleTriggerImport} disabled={isImporting || isExporting}>
+          <DropdownMenuItem onClick={handleExportSingleJsonFile} disabled={anyOperationInProgress}>
+            {isExportingJson ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileJson className="mr-2 h-4 w-4" />}
+            Export Data (JSON)
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={handleTriggerImport} disabled={anyOperationInProgress}>
             {isImporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
-            Import Data
+            Import Data (ZIP)
           </DropdownMenuItem>
           <DropdownMenuSeparator />
             <AlertDialog>
@@ -193,7 +213,7 @@ export default function SettingsDropdown() {
                 <DropdownMenuItem 
                   onSelect={(e) => e.preventDefault()} 
                   className="text-destructive focus:bg-destructive/10 focus:text-destructive w-full"
-                  disabled={isImporting || isExporting}
+                  disabled={anyOperationInProgress}
                 >
                   <Trash2 className="mr-2 h-4 w-4" />
                   Delete All Data

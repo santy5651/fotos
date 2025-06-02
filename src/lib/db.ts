@@ -127,12 +127,12 @@ export const getImages = async (filter?: {
       );
     } else if (filter?.collectionId !== null && filter?.collectionId !== undefined) {
       const selectedCollectionId = filter.collectionId;
+      // Show images in the selected collection OR images that are unassigned
+      // This logic might need refinement if "unassigned" should not be mixed with a specific collection view.
+      // For now, keeping it as is.
       imagesQuery = db.images.filter(img =>
           !img.isPotentialDuplicate &&
-          (
-              (img.collectionIds && img.collectionIds.includes(selectedCollectionId)) ||
-              (!img.collectionIds || img.collectionIds.length === 0) 
-          )
+          (img.collectionIds && img.collectionIds.includes(selectedCollectionId))
       );
     } else { 
       imagesQuery = db.images.filter(img => !img.isPotentialDuplicate);
@@ -149,13 +149,15 @@ export const getImages = async (filter?: {
       if (nameA < nameB) return -1;
       if (nameA > nameB) return 1;
       
-      if ((a.id || 0) < (b.id || 0)) return -1; // Older ID first
+      // Secondary sort by ID to keep a stable order within same-name groups
+      if ((a.id || 0) < (b.id || 0)) return -1; 
       if ((a.id || 0) > (b.id || 0)) return 1;
-            
-      return 0; 
+
+      // Tertiary sort by createdAt if IDs are somehow the same (shouldn't happen with autoInc)
+      return (a.createdAt?.getTime() || 0) - (b.createdAt?.getTime() || 0);
     });
   } else {
-     finalImages.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+     finalImages.sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
   }
 
   if (!filter?.reviewDuplicates && filter?.searchTerm && filter.searchTerm.trim() !== '') {
@@ -295,9 +297,9 @@ export const exportData = async (): Promise<{ metadataJson: string, imageFiles: 
       const { children, imageCount, ...serializableCollection } = c; 
       return {
         ...serializableCollection,
-        id: c.id, // Ensure ID is exported
+        id: c.id, 
         name: c.name || "Unnamed Collection",
-        parentId: c.parentId === undefined ? null : c.parentId, // Ensure parentId is null if undefined
+        parentId: c.parentId === undefined ? null : c.parentId, 
         createdAt: (c.createdAt ? new Date(c.createdAt) : new Date()).toISOString(),
       };
     }),
@@ -306,20 +308,18 @@ export const exportData = async (): Promise<{ metadataJson: string, imageFiles: 
       let extension = '.bin'; 
       if (img.mimeType && img.mimeType.includes('/')) {
           const typePart = img.mimeType.split('/')[1].toLowerCase();
-          // common image extensions
           const commonExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'tiff'];
           if (commonExtensions.includes(typePart)) {
             extension = `.${typePart === 'jpeg' ? 'jpg' : typePart}`;
           } else {
-            extension = `.${typePart.substring(0,3)}`; // fallback for less common types
+            extension = `.${typePart.substring(0,3)}`; 
           }
       }
       const fileNameInZip = `img_${img.id}_${sanitizedOriginalName}${extension}`;
       
-      // Explicitly select fields for export and provide defaults for safety
-      const { file, dataUri, ...baseImage } = img; // Exclude file and dataUri
+      const { file, dataUri, ...baseImage } = img; 
       return {
-        ...baseImage, // Includes id, name, width, height, mimeType, syncStatus
+        ...baseImage, 
         name: img.name || "Unnamed Image",
         tags: img.tags || [],
         description: img.description || "",
@@ -364,6 +364,62 @@ export const exportData = async (): Promise<{ metadataJson: string, imageFiles: 
   return { metadataJson: JSON.stringify(metadata, null, 2), imageFiles };
 };
 
+export const exportDataAsSingleJson = async (): Promise<string> => {
+  const imagesFromDb = await db.images.toArray();
+  const collectionsFromDb = await db.collections.toArray();
+
+  const serializableCollections = collectionsFromDb.map(c => {
+    const { children, imageCount, ...serializableCollection } = c;
+    return {
+      ...serializableCollection,
+      id: c.id,
+      name: c.name || "Unnamed Collection",
+      parentId: c.parentId === undefined ? null : c.parentId,
+      createdAt: (c.createdAt ? new Date(c.createdAt) : new Date()).toISOString(),
+    };
+  });
+
+  const serializableImages = await Promise.all(imagesFromDb.map(async (img) => {
+    const { file, ...baseImage } = img; // Exclude original file Blob
+    let imageDataUri: string | undefined = undefined;
+    if (file instanceof Blob) {
+      try {
+        imageDataUri = await blobToDataURL(file);
+      } catch (error) {
+        console.warn(`Could not convert blob to data URI for image ID ${img.id}:`, error);
+      }
+    }
+
+    return {
+      ...baseImage,
+      name: img.name || "Unnamed Image",
+      tags: img.tags || [],
+      description: img.description || "",
+      width: img.width || 0,
+      height: img.height || 0,
+      isFavorite: img.isFavorite || false,
+      isProtected: img.isProtected || false,
+      createdAt: (img.createdAt ? new Date(img.createdAt) : new Date()).toISOString(),
+      mimeType: img.mimeType || "application/octet-stream",
+      syncStatus: img.syncStatus || 'local',
+      collectionIds: img.collectionIds || [],
+      transform: img.transform && typeof img.transform.rotate === 'number' ? { rotate: img.transform.rotate } : { rotate: 0 },
+      isPotentialDuplicate: img.isPotentialDuplicate || false,
+      hasTags: typeof img.hasTags === 'boolean' ? img.hasTags : ((img.tags || []).length > 0),
+      hasDescription: typeof img.hasDescription === 'boolean' ? img.hasDescription : ((img.description || "").trim() !== ''),
+      imageDataUri: imageDataUri, // Embed the image data here
+    };
+  }));
+
+  const exportObject = {
+    version: 6, // Keep version consistent or manage appropriately
+    collections: serializableCollections,
+    images: serializableImages,
+  };
+
+  return JSON.stringify(exportObject, null, 2);
+};
+
 
 export const importData = async (metadataJson: string, files: File[]): Promise<string[]> => {
   const warnings: string[] = [];
@@ -392,7 +448,7 @@ export const importData = async (metadataJson: string, files: File[]): Promise<s
       const oldCollectionId = collToImport.id;
       const newCollectionEntry: Omit<Collection, 'id' |'children'|'imageCount'> = {
         name: collToImport.name || `Imported Collection ${Date.now()}`,
-        parentId: null, // Will be set in pass 2
+        parentId: null, 
         createdAt: collToImport.createdAt ? new Date(collToImport.createdAt) : new Date(),
       };
       if (!(newCollectionEntry.createdAt instanceof Date) || isNaN(newCollectionEntry.createdAt.getTime())) {
@@ -558,3 +614,4 @@ export const bulkAddImagesToCollections = async (imageIds: number[], targetColle
     }
   });
 };
+
