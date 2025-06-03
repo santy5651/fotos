@@ -9,7 +9,7 @@ export class PicStackDexie extends Dexie {
   constructor() {
     super('PicStackDB');
     this.version(6).stores({ // Incremented version for new index
-      images: '++id, name, *tags, createdAt, isFavorite, isProtected, *collectionIds, mimeType, isPotentialDuplicate, hasTags, hasDescription', 
+      images: '++id, name, *tags, createdAt, isFavorite, isProtected, *collectionIds, mimeType, isPotentialDuplicate, hasTags, hasDescription',
       collections: '++id, name, parentId, createdAt',
     });
     // Keep previous versions for upgrade paths if needed by users with older DBs
@@ -35,7 +35,7 @@ export class PicStackDexie extends Dexie {
         }
       });
     });
-    this.version(3).stores({ 
+    this.version(3).stores({
       images: '++id, name, *tags, createdAt, isFavorite, isProtected, *collectionIds, mimeType, isPotentialDuplicate',
       collections: '++id, name, parentId, createdAt',
     }).upgrade(tx => {
@@ -67,7 +67,7 @@ export const db = new PicStackDexie();
 // Image CRUD
 export const addImage = async (image: Omit<ImageMetadata, 'id' | 'createdAt' | 'syncStatus' | 'hasTags' | 'hasDescription'> & { createdAt?: Date, syncStatus?: ImageMetadata['syncStatus'] }): Promise<number> => {
   const newImage: ImageMetadata = {
-    id: undefined, 
+    id: undefined,
     name: image.name,
     file: image.file,
     tags: image.tags || [],
@@ -101,10 +101,10 @@ export const getImages = async (filter?: {
   if (filter?.reviewDuplicates) {
     const potentialDuplicatesFlagged = await db.images.filter(img => img.isPotentialDuplicate === true).toArray();
     if (potentialDuplicatesFlagged.length === 0) {
-      return []; 
+      return [];
     }
     const duplicateNames = new Set(potentialDuplicatesFlagged.map(img => img.name.toLowerCase()));
-    
+
     finalImages = await db.images.filter(img => duplicateNames.has(img.name.toLowerCase())).toArray();
 
   } else {
@@ -116,25 +116,22 @@ export const getImages = async (filter?: {
         (!img.collectionIds || img.collectionIds.length === 0)
       );
     } else if (filter?.showUntagged) {
-      imagesQuery = db.images.filter(img => 
+      imagesQuery = db.images.filter(img =>
         !img.isPotentialDuplicate &&
         img.hasTags === false
       );
-    } else if (filter?.showUndescribed) { 
-      imagesQuery = db.images.filter(img => 
+    } else if (filter?.showUndescribed) {
+      imagesQuery = db.images.filter(img =>
         !img.isPotentialDuplicate &&
         img.hasDescription === false
       );
     } else if (filter?.collectionId !== null && filter?.collectionId !== undefined) {
       const selectedCollectionId = filter.collectionId;
-      // Show images in the selected collection OR images that are unassigned
-      // This logic might need refinement if "unassigned" should not be mixed with a specific collection view.
-      // For now, keeping it as is.
       imagesQuery = db.images.filter(img =>
           !img.isPotentialDuplicate &&
           (img.collectionIds && img.collectionIds.includes(selectedCollectionId))
       );
-    } else { 
+    } else {
       imagesQuery = db.images.filter(img => !img.isPotentialDuplicate);
     }
     finalImages = await imagesQuery.toArray();
@@ -145,15 +142,13 @@ export const getImages = async (filter?: {
       finalImages.sort((a, b) => {
       const nameA = a.name.toLowerCase();
       const nameB = b.name.toLowerCase();
-      
+
       if (nameA < nameB) return -1;
       if (nameA > nameB) return 1;
-      
-      // Secondary sort by ID to keep a stable order within same-name groups
-      if ((a.id || 0) < (b.id || 0)) return -1; 
+
+      if ((a.id || 0) < (b.id || 0)) return -1;
       if ((a.id || 0) > (b.id || 0)) return 1;
 
-      // Tertiary sort by createdAt if IDs are somehow the same (shouldn't happen with autoInc)
       return (a.createdAt?.getTime() || 0) - (b.createdAt?.getTime() || 0);
     });
   } else {
@@ -163,11 +158,11 @@ export const getImages = async (filter?: {
   if (!filter?.reviewDuplicates && filter?.searchTerm && filter.searchTerm.trim() !== '') {
     const searchTerm = filter.searchTerm.trim();
     const termLower = searchTerm.toLowerCase();
-    const allCollections = await getCollections(); 
+    const allCollections = await getCollections();
 
     if (searchTerm.startsWith('tag:')) {
       const tagName = searchTerm.substring(4).toLowerCase();
-      finalImages = finalImages.filter(img => 
+      finalImages = finalImages.filter(img =>
         img.tags && img.tags.some(tag => tag.toLowerCase() === tagName)
       );
     } else {
@@ -175,11 +170,11 @@ export const getImages = async (filter?: {
         if (img.name.toLowerCase().includes(termLower)) return true;
         if (img.tags && img.tags.some(tag => tag.toLowerCase().includes(termLower))) return true;
         if (img.description && img.description.toLowerCase().includes(termLower)) return true;
-        
+
         if (img.collectionIds && img.collectionIds.length > 0) {
           const imageCollectionNames = img.collectionIds
             .map(id => allCollections.find(c => c.id === id)?.name)
-            .filter((name): name is string => !!name); 
+            .filter((name): name is string => !!name);
           if (imageCollectionNames.some(name => name.toLowerCase().includes(termLower))) {
             return true;
           }
@@ -292,34 +287,34 @@ export const exportData = async (): Promise<{ metadataJson: string, imageFiles: 
   const collections = await db.collections.toArray();
 
   const metadata = {
-    version: 6, 
+    version: 6,
     collections: collections.map(c => {
-      const { children, imageCount, ...serializableCollection } = c; 
+      const { children, imageCount, ...serializableCollection } = c;
       return {
         ...serializableCollection,
-        id: c.id, 
+        id: c.id,
         name: c.name || "Unnamed Collection",
-        parentId: c.parentId === undefined ? null : c.parentId, 
+        parentId: c.parentId === undefined ? null : c.parentId,
         createdAt: (c.createdAt ? new Date(c.createdAt) : new Date()).toISOString(),
       };
     }),
     images: images.map(img => {
       const sanitizedOriginalName = (img.name || `image_no_name_${img.id || 'unknown'}`).replace(/[^a-zA-Z0-9_.\-]/g, '_');
-      let extension = '.bin'; 
+      let extension = '.bin';
       if (img.mimeType && img.mimeType.includes('/')) {
           const typePart = img.mimeType.split('/')[1].toLowerCase();
           const commonExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'tiff'];
           if (commonExtensions.includes(typePart)) {
             extension = `.${typePart === 'jpeg' ? 'jpg' : typePart}`;
           } else {
-            extension = `.${typePart.substring(0,3)}`; 
+            extension = `.${typePart.substring(0,3)}`;
           }
       }
       const fileNameInZip = `img_${img.id}_${sanitizedOriginalName}${extension}`;
-      
-      const { file, dataUri, ...baseImage } = img; 
+
+      const { file, dataUri, ...baseImage } = img;
       return {
-        ...baseImage, 
+        ...baseImage,
         name: img.name || "Unnamed Image",
         tags: img.tags || [],
         description: img.description || "",
@@ -335,13 +330,13 @@ export const exportData = async (): Promise<{ metadataJson: string, imageFiles: 
         isPotentialDuplicate: img.isPotentialDuplicate || false,
         hasTags: typeof img.hasTags === 'boolean' ? img.hasTags : ((img.tags || []).length > 0),
         hasDescription: typeof img.hasDescription === 'boolean' ? img.hasDescription : ((img.description || "").trim() !== ''),
-        fileNameInZip: fileNameInZip, 
+        fileNameInZip: fileNameInZip,
       };
     }),
   };
 
   const imageFiles = images
-    .filter(img => img.file instanceof Blob) 
+    .filter(img => img.file instanceof Blob)
     .map(img => {
         const sanitizedOriginalName = (img.name || `image_no_name_${img.id || 'unknown'}`).replace(/[^a-zA-Z0-9_.\-]/g, '_');
         let extension = '.bin';
@@ -356,7 +351,7 @@ export const exportData = async (): Promise<{ metadataJson: string, imageFiles: 
         }
         const fileNameInZip = `img_${img.id}_${sanitizedOriginalName}${extension}`;
         return {
-            name: fileNameInZip, 
+            name: fileNameInZip,
             blob: img.file as Blob
         };
   });
@@ -420,6 +415,142 @@ export const exportDataAsSingleJson = async (): Promise<string> => {
   return JSON.stringify(exportObject, null, 2);
 };
 
+// Helper function to convert data URI to File object
+export function dataURLtoFile(dataurl: string, filename: string): File {
+    const arr = dataurl.split(',');
+    if (arr.length < 2) {
+        throw new Error('Invalid data URL');
+    }
+    const mimeMatch = arr[0].match(/:(.*?);/);
+    if (!mimeMatch || mimeMatch.length < 2) {
+        throw new Error('Could not parse MIME type from data URL');
+    }
+    const mime = mimeMatch[1];
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+        u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new File([u8arr], filename, { type: mime });
+}
+
+
+export const importDataFromJson = async (jsonDataString: string): Promise<string[]> => {
+  const warnings: string[] = [];
+  let parsedData;
+
+  try {
+    parsedData = JSON.parse(jsonDataString);
+    if (parsedData.version !== 6) {
+      warnings.push(`Import failed: Metadata version mismatch. Expected v6, got v${parsedData.version}. Try exporting new data first.`);
+      return warnings;
+    }
+  } catch (e) {
+    warnings.push(`Failed to parse JSON: ${(e as Error).message}`);
+    return warnings;
+  }
+
+  const importedCollectionsRaw: Array<any> = parsedData.collections || [];
+  const importedImagesJsonData: Array<any> = parsedData.images || [];
+
+  const oldToNewCollectionIdMap = new Map<number, number>();
+  const collectionParentImportData: Array<{ newDbId: number; oldParentId: number | null }> = [];
+
+  await db.transaction('rw', db.collections, db.images, async () => {
+    for (const collToImport of importedCollectionsRaw) {
+      const oldCollectionId = collToImport.id;
+      const newCollectionEntry: Omit<Collection, 'id' | 'children' | 'imageCount'> = {
+        name: collToImport.name || `Imported Collection ${Date.now()}`,
+        parentId: null,
+        createdAt: collToImport.createdAt ? new Date(collToImport.createdAt) : new Date(),
+      };
+      if (!(newCollectionEntry.createdAt instanceof Date) || isNaN(newCollectionEntry.createdAt.getTime())) {
+        warnings.push(`Collection "${newCollectionEntry.name}" (Old ID: ${oldCollectionId}) has invalid createdAt value ("${collToImport.createdAt}"). Using current date.`);
+        newCollectionEntry.createdAt = new Date();
+      }
+      try {
+        const newGeneratedDbId = await db.collections.add(newCollectionEntry as Collection);
+        if (oldCollectionId !== undefined && oldCollectionId !== null) {
+          oldToNewCollectionIdMap.set(oldCollectionId, newGeneratedDbId);
+        }
+        collectionParentImportData.push({ newDbId: newGeneratedDbId, oldParentId: collToImport.parentId ?? null });
+      } catch (e) {
+        warnings.push(`Failed to import collection "${newCollectionEntry.name}" (Old ID: ${oldCollectionId}): ${(e as Error).message}`);
+      }
+    }
+
+    for (const { newDbId, oldParentId } of collectionParentImportData) {
+      if (oldParentId !== null && oldParentId !== undefined) {
+        const newParentDbId = oldToNewCollectionIdMap.get(oldParentId);
+        if (newParentDbId !== undefined) {
+          try {
+            await db.collections.update(newDbId, { parentId: newParentDbId });
+          } catch (e) {
+            warnings.push(`Failed to set parent for collection (New DB ID: ${newDbId}, Original Parent ID: ${oldParentId}): ${(e as Error).message}`);
+          }
+        } else {
+          warnings.push(`Parent collection (Original ID: ${oldParentId}) for collection (New DB ID: ${newDbId}) not found in mapping. It will remain a root collection.`);
+        }
+      }
+    }
+
+    for (const imgJson of importedImagesJsonData) {
+      let imageFile: File | undefined;
+      try {
+        if (typeof imgJson.imageDataUri === 'string' && imgJson.imageDataUri.startsWith('data:')) {
+            const filename = imgJson.name || `imported_image_${Date.now()}`;
+            imageFile = dataURLtoFile(imgJson.imageDataUri, filename);
+        } else {
+            warnings.push(`Image data URI missing or invalid for image "${imgJson.name}". Skipping this image.`);
+            continue;
+        }
+      } catch (e) {
+        warnings.push(`Error converting data URI to file for image "${imgJson.name}": ${(e as Error).message}. Skipping this image.`);
+        continue;
+      }
+
+
+      const newImageCollectionIds = (imgJson.collectionIds || [])
+        .map((oldCollId: number) => oldToNewCollectionIdMap.get(oldCollId))
+        .filter((newCollId?: number): newCollId is number => newCollId !== undefined && newCollId !== null);
+
+      const importedTags = Array.isArray(imgJson.tags) ? imgJson.tags : [];
+      const importedDescription = typeof imgJson.description === 'string' ? imgJson.description : "";
+
+      const imageToAdd: Omit<ImageMetadata, 'id'> = {
+        name: imgJson.name || imageFile.name || `imported_image_${Date.now()}`,
+        file: imageFile,
+        tags: importedTags,
+        description: importedDescription,
+        width: typeof imgJson.width === 'number' ? imgJson.width : 0,
+        height: typeof imgJson.height === 'number' ? imgJson.height : 0,
+        isFavorite: typeof imgJson.isFavorite === 'boolean' ? imgJson.isFavorite : false,
+        isProtected: typeof imgJson.isProtected === 'boolean' ? imgJson.isProtected : false,
+        createdAt: imgJson.createdAt ? new Date(imgJson.createdAt) : new Date(),
+        mimeType: imageFile.type || imgJson.mimeType || 'application/octet-stream',
+        syncStatus: (['local', 'pending', 'synced'].includes(imgJson.syncStatus) ? imgJson.syncStatus : 'local') as ImageMetadata['syncStatus'],
+        collectionIds: newImageCollectionIds,
+        transform: (imgJson.transform && typeof imgJson.transform.rotate === 'number') ? { rotate: imgJson.transform.rotate } : { rotate: 0 },
+        isPotentialDuplicate: typeof imgJson.isPotentialDuplicate === 'boolean' ? imgJson.isPotentialDuplicate : false,
+        hasTags: typeof imgJson.hasTags === 'boolean' ? imgJson.hasTags : (importedTags.length > 0),
+        hasDescription: typeof imgJson.hasDescription === 'boolean' ? imgJson.hasDescription : (importedDescription.trim() !== ''),
+      };
+
+      if (!(imageToAdd.createdAt instanceof Date) || isNaN(imageToAdd.createdAt.getTime())) {
+        warnings.push(`Image "${imageToAdd.name}" has invalid createdAt value ("${imgJson.createdAt}"). Using current date.`);
+        imageToAdd.createdAt = new Date();
+      }
+      try {
+        await db.images.add(imageToAdd as ImageMetadata);
+      } catch (e) {
+        warnings.push(`Failed to import image "${imageToAdd.name}": ${(e as Error).message}`);
+      }
+    }
+  });
+  return warnings;
+};
+
 
 export const importData = async (metadataJson: string, files: File[]): Promise<string[]> => {
   const warnings: string[] = [];
@@ -427,7 +558,7 @@ export const importData = async (metadataJson: string, files: File[]): Promise<s
   let parsedData;
   try {
     parsedData = JSON.parse(metadataJson);
-    if (parsedData.version !== 6) { 
+    if (parsedData.version !== 6) {
         warnings.push(`Import failed: Metadata version mismatch. Expected v6, got v${parsedData.version}. Try exporting new data first.`);
         return warnings;
     }
@@ -448,7 +579,7 @@ export const importData = async (metadataJson: string, files: File[]): Promise<s
       const oldCollectionId = collToImport.id;
       const newCollectionEntry: Omit<Collection, 'id' |'children'|'imageCount'> = {
         name: collToImport.name || `Imported Collection ${Date.now()}`,
-        parentId: null, 
+        parentId: null,
         createdAt: collToImport.createdAt ? new Date(collToImport.createdAt) : new Date(),
       };
       if (!(newCollectionEntry.createdAt instanceof Date) || isNaN(newCollectionEntry.createdAt.getTime())) {
@@ -457,7 +588,7 @@ export const importData = async (metadataJson: string, files: File[]): Promise<s
       }
       try {
         const newGeneratedDbId = await db.collections.add(newCollectionEntry as Collection);
-        if (oldCollectionId !== undefined && oldCollectionId !== null) { 
+        if (oldCollectionId !== undefined && oldCollectionId !== null) {
           oldToNewCollectionIdMap.set(oldCollectionId, newGeneratedDbId);
         }
         collectionParentImportData.push({ newDbId: newGeneratedDbId, oldParentId: collToImport.parentId ?? null });
@@ -486,8 +617,8 @@ export const importData = async (metadataJson: string, files: File[]): Promise<s
       if (imageFile) {
         const newImageCollectionIds = (imgJson.collectionIds || [])
           .map((oldCollId: number) => oldToNewCollectionIdMap.get(oldCollId))
-          .filter((newCollId?: number): newCollId is number => newCollId !== undefined && newCollId !== null); 
-        
+          .filter((newCollId?: number): newCollId is number => newCollId !== undefined && newCollId !== null);
+
         const importedTags = Array.isArray(imgJson.tags) ? imgJson.tags : [];
         const importedDescription = typeof imgJson.description === 'string' ? imgJson.description : "";
 
@@ -545,21 +676,21 @@ export const getPotentialDuplicatesCount = async (): Promise<number> => {
 };
 
 export const getUnassignedImageCount = async (): Promise<number> => {
-  return db.images.filter(img => 
-    !img.isPotentialDuplicate && 
+  return db.images.filter(img =>
+    !img.isPotentialDuplicate &&
     (!img.collectionIds || img.collectionIds.length === 0)
   ).count();
 };
 
 export const getUntaggedImageCount = async (): Promise<number> => {
-  return db.images.filter(img => 
+  return db.images.filter(img =>
     !img.isPotentialDuplicate &&
     img.hasTags === false
   ).count();
 };
 
 export const getUndescribedImageCount = async (): Promise<number> => {
-  return db.images.filter(img => 
+  return db.images.filter(img =>
     !img.isPotentialDuplicate &&
     img.hasDescription === false
   ).count();
