@@ -8,11 +8,10 @@ export class PicStackDexie extends Dexie {
 
   constructor() {
     super('PicStackDB');
-    this.version(6).stores({ // Incremented version for new index
+    this.version(6).stores({
       images: '++id, name, *tags, createdAt, isFavorite, isProtected, *collectionIds, mimeType, isPotentialDuplicate, hasTags, hasDescription',
       collections: '++id, name, parentId, createdAt',
     });
-    // Keep previous versions for upgrade paths if needed by users with older DBs
     this.version(5).stores({
       images: '++id, name, *tags, createdAt, isFavorite, isProtected, *collectionIds, mimeType, isPotentialDuplicate, hasTags, hasDescription',
       collections: '++id, name, parentId, createdAt',
@@ -47,12 +46,12 @@ export class PicStackDexie extends Dexie {
       });
     });
     this.version(2).stores({
-      images: '++id, name, *tags, createdAt, isFavorite, *collectionIds, mimeType', // isProtected was added in v3 implicitly by store definition if users jumped
+      images: '++id, name, *tags, createdAt, isFavorite, *collectionIds, mimeType',
       collections: '++id, name, parentId, createdAt',
     }).upgrade(tx => {
        return tx.table("images").toCollection().modify(image => {
         if (image.isPotentialDuplicate === undefined) image.isPotentialDuplicate = false;
-        if (image.isProtected === undefined) image.isProtected = false; // Ensure isProtected exists
+        if (image.isProtected === undefined) image.isProtected = false;
       });
     });
     this.version(1).stores({
@@ -88,6 +87,28 @@ export const addImage = async (image: Omit<ImageMetadata, 'id' | 'createdAt' | '
   return db.images.add(newImage);
 };
 
+// Helper function to sort and paginate an array of images (used for reviewDuplicates mode)
+const sortAndPaginateArray = (
+  imagesArray: ImageMetadata[],
+  offset?: number,
+  limit?: number
+): ImageMetadata[] => {
+  imagesArray.sort((a, b) => {
+    const nameA = a.name.toLowerCase();
+    const nameB = b.name.toLowerCase();
+    if (nameA < nameB) return -1;
+    if (nameA > nameB) return 1;
+    if ((a.id || 0) < (b.id || 0)) return -1;
+    if ((a.id || 0) > (b.id || 0)) return 1;
+    return (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0); // Default sort by date desc if names/IDs are same
+  });
+
+  const effectiveOffset = offset ?? 0;
+  const end = limit !== undefined ? effectiveOffset + limit : undefined;
+  return imagesArray.slice(effectiveOffset, end);
+};
+
+
 export const getImages = async (filter?: {
   collectionId?: number | null;
   searchTerm?: string;
@@ -95,87 +116,57 @@ export const getImages = async (filter?: {
   showUnassigned?: boolean;
   showUntagged?: boolean;
   showUndescribed?: boolean;
-}): Promise<ImageMetadata[]> => {
-  let finalImages: ImageMetadata[] = [];
+  offset?: number;
+  limit?: number;
+}): Promise<{ images: ImageMetadata[], totalCount: number }> => {
+  
+  let query: Dexie.Collection<ImageMetadata, number> | undefined;
+  let preliminaryImagesArray: ImageMetadata[] | undefined;
 
   if (filter?.reviewDuplicates) {
     const potentialDuplicatesFlagged = await db.images.filter(img => img.isPotentialDuplicate === true).toArray();
     if (potentialDuplicatesFlagged.length === 0) {
-      return [];
+      return { images: [], totalCount: 0 };
     }
     const duplicateNames = new Set(potentialDuplicatesFlagged.map(img => img.name.toLowerCase()));
-
-    finalImages = await db.images.filter(img => duplicateNames.has(img.name.toLowerCase())).toArray();
-
+    preliminaryImagesArray = await db.images.filter(img => duplicateNames.has(img.name.toLowerCase())).toArray();
   } else {
-    let imagesQuery: Dexie.Collection<ImageMetadata, number>;
-
     if (filter?.showUnassigned) {
-      imagesQuery = db.images.filter(img =>
-        !img.isPotentialDuplicate &&
-        (!img.collectionIds || img.collectionIds.length === 0)
-      );
+      query = db.images.filter(img => !img.isPotentialDuplicate && (!img.collectionIds || img.collectionIds.length === 0));
     } else if (filter?.showUntagged) {
-      imagesQuery = db.images.filter(img =>
-        !img.isPotentialDuplicate &&
-        img.hasTags === false
-      );
+      query = db.images.filter(img => !img.isPotentialDuplicate && img.hasTags === false);
     } else if (filter?.showUndescribed) {
-      imagesQuery = db.images.filter(img =>
-        !img.isPotentialDuplicate &&
-        img.hasDescription === false
-      );
+      query = db.images.filter(img => !img.isPotentialDuplicate && img.hasDescription === false);
     } else if (filter?.collectionId !== null && filter?.collectionId !== undefined) {
-      const selectedCollectionId = filter.collectionId;
-      imagesQuery = db.images.filter(img =>
-          !img.isPotentialDuplicate &&
-          (img.collectionIds && img.collectionIds.includes(selectedCollectionId))
-      );
+      // Dexie's where clause with equals on an array needs a specific value, not 'includes'.
+      // So, we filter after getting images in a collection.
+      // A more efficient way would be to query images by collectionId using an index if Dexie supported multiEntry indexes for 'equals' with anyOf logic directly.
+      // For now, this will work: query based on collectionId
+      const targetCollectionId = filter.collectionId;
+      query = db.images.where('collectionIds').equals(targetCollectionId).filter(img => !img.isPotentialDuplicate);
     } else {
-      imagesQuery = db.images.filter(img => !img.isPotentialDuplicate);
+      query = db.images.filter(img => !img.isPotentialDuplicate);
     }
-    finalImages = await imagesQuery.toArray();
-  }
 
+    if (filter?.searchTerm && filter.searchTerm.trim() !== '') {
+      const searchTerm = filter.searchTerm.trim().toLowerCase();
+      const allCollections = await getCollections(); 
 
-  if (filter?.reviewDuplicates) {
-      finalImages.sort((a, b) => {
-      const nameA = a.name.toLowerCase();
-      const nameB = b.name.toLowerCase();
-
-      if (nameA < nameB) return -1;
-      if (nameA > nameB) return 1;
-
-      if ((a.id || 0) < (b.id || 0)) return -1;
-      if ((a.id || 0) > (b.id || 0)) return 1;
-
-      return (a.createdAt?.getTime() || 0) - (b.createdAt?.getTime() || 0);
-    });
-  } else {
-     finalImages.sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
-  }
-
-  if (!filter?.reviewDuplicates && filter?.searchTerm && filter.searchTerm.trim() !== '') {
-    const searchTerm = filter.searchTerm.trim();
-    const termLower = searchTerm.toLowerCase();
-    const allCollections = await getCollections();
-
-    if (searchTerm.startsWith('tag:')) {
-      const tagName = searchTerm.substring(4).toLowerCase();
-      finalImages = finalImages.filter(img =>
-        img.tags && img.tags.some(tag => tag.toLowerCase() === tagName)
-      );
-    } else {
-      finalImages = finalImages.filter(img => {
-        if (img.name.toLowerCase().includes(termLower)) return true;
-        if (img.tags && img.tags.some(tag => tag.toLowerCase().includes(termLower))) return true;
-        if (img.description && img.description.toLowerCase().includes(termLower)) return true;
+      query = query.filter(img => {
+        if (img.name.toLowerCase().includes(searchTerm)) return true;
+        if (img.tags && img.tags.some(tag => tag.toLowerCase().includes(searchTerm))) return true;
+        if (img.description && img.description.toLowerCase().includes(searchTerm)) return true;
+        
+        if (searchTerm.startsWith('tag:')) {
+            const tagNameOnly = searchTerm.substring(4);
+            return img.tags && img.tags.some(tag => tag.toLowerCase() === tagNameOnly);
+        }
 
         if (img.collectionIds && img.collectionIds.length > 0) {
           const imageCollectionNames = img.collectionIds
             .map(id => allCollections.find(c => c.id === id)?.name)
             .filter((name): name is string => !!name);
-          if (imageCollectionNames.some(name => name.toLowerCase().includes(termLower))) {
+          if (imageCollectionNames.some(name => name.toLowerCase().includes(searchTerm))) {
             return true;
           }
         }
@@ -184,7 +175,33 @@ export const getImages = async (filter?: {
     }
   }
 
-  return finalImages;
+  let totalCount: number;
+  let finalImages: ImageMetadata[];
+
+  if (preliminaryImagesArray !== undefined) { // reviewDuplicates case
+    totalCount = preliminaryImagesArray.length;
+    finalImages = sortAndPaginateArray(preliminaryImagesArray, filter?.offset, filter?.limit);
+  } else if (query) { // Other cases
+    totalCount = await query.count();
+    
+    // Apply general sorting (descending by createdAt)
+    // Dexie's orderBy is for indexed fields. For complex sorts or unindexed, sort after toArray().
+    // createdAt is indexed, so we can use orderBy.
+    let sortedQuery = query.orderBy('createdAt').reverse(); // Sorts by date descending
+
+    if (filter?.offset !== undefined && filter?.limit !== undefined) {
+      finalImages = await sortedQuery.offset(filter.offset).limit(filter.limit).toArray();
+    } else if (filter?.limit !== undefined) {
+      finalImages = await sortedQuery.limit(filter.limit).toArray();
+    } else {
+      finalImages = await sortedQuery.toArray();
+    }
+  } else {
+    // Should not happen if logic is correct, but as a fallback:
+    return { images: [], totalCount: 0 };
+  }
+  
+  return { images: finalImages, totalCount };
 };
 
 
@@ -215,7 +232,6 @@ export const checkIfImageExistsByName = async (fileName: string): Promise<boolea
   const count = await db.images.filter(img => img.name.toLowerCase() === lowerCaseFileName && !img.isPotentialDuplicate).count();
   return count > 0;
 };
-
 
 // Collection CRUD
 export const addCollection = async (collection: Omit<Collection, 'id' | 'createdAt'> & { createdAt?: Date }): Promise<number> => {
@@ -375,7 +391,7 @@ export const exportDataAsSingleJson = async (): Promise<string> => {
   });
 
   const serializableImages = await Promise.all(imagesFromDb.map(async (img) => {
-    const { file, ...baseImage } = img; // Exclude original file Blob
+    const { file, ...baseImage } = img; 
     let imageDataUri: string | undefined = undefined;
     if (file instanceof Blob) {
       try {
@@ -402,12 +418,12 @@ export const exportDataAsSingleJson = async (): Promise<string> => {
       isPotentialDuplicate: img.isPotentialDuplicate || false,
       hasTags: typeof img.hasTags === 'boolean' ? img.hasTags : ((img.tags || []).length > 0),
       hasDescription: typeof img.hasDescription === 'boolean' ? img.hasDescription : ((img.description || "").trim() !== ''),
-      imageDataUri: imageDataUri, // Embed the image data here
+      imageDataUri: imageDataUri, 
     };
   }));
 
   const exportObject = {
-    version: 6, // Keep version consistent or manage appropriately
+    version: 6, 
     collections: serializableCollections,
     images: serializableImages,
   };
@@ -415,7 +431,6 @@ export const exportDataAsSingleJson = async (): Promise<string> => {
   return JSON.stringify(exportObject, null, 2);
 };
 
-// Helper function to convert data URI to File object
 export function dataURLtoFile(dataurl: string, filename: string): File {
     const arr = dataurl.split(',');
     if (arr.length < 2) {
@@ -745,4 +760,3 @@ export const bulkAddImagesToCollections = async (imageIds: number[], targetColle
     }
   });
 };
-

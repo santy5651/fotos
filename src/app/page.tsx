@@ -7,11 +7,16 @@ import AppLayout from '@/components/layout/AppLayout';
 import ImageGrid from '@/components/image/ImageGrid';
 import { db, getImages, getImageById, updateImage, blobToDataURL } from '@/lib/db';
 import type { ImageMetadata } from '@/types';
-import { Loader2, CheckSquare, Square, FolderPlus, FileText } from 'lucide-react'; // Added FileText
+import { Loader2, CheckSquare, Square, FolderPlus, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import BulkAddToCollectionDialog from '@/components/collections/BulkAddToCollectionDialog';
 import { useToast } from "@/hooks/use-toast";
 import { describeImage } from '@/ai/flows/describe-image-flow';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from '@/components/ui/label';
+
+const ITEMS_PER_PAGE_OPTIONS = [20, 50, 100, 200];
+const NUM_COLUMNS_OPTIONS = [2, 3, 4, 5, 6];
 
 export default function HomePage() {
   const { toast } = useToast();
@@ -24,15 +29,23 @@ export default function HomePage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedImageIds, setSelectedImageIds] = useState<Set<number>>(new Set());
   const [isBulkAddToCollectionDialogOpen, setIsBulkAddToCollectionDialogOpen] = useState(false);
-  const [isBulkDescribing, setIsBulkDescribing] = useState(false); // New state for bulk description generation
+  const [isBulkDescribing, setIsBulkDescribing] = useState(false);
 
-  const images = useLiveQuery(
+  // Pagination and Layout States
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(ITEMS_PER_PAGE_OPTIONS[1]); // Default to 50
+  const [numberOfColumns, setNumberOfColumns] = useState(NUM_COLUMNS_OPTIONS[2]); // Default to 4
+  const [totalImagesForPagination, setTotalImagesForPagination] = useState(0);
+
+  const queryResult = useLiveQuery(
     async () => {
       const filter: any = {
         reviewDuplicates: reviewDuplicatesMode,
         showUnassigned: showUnassignedMode,
         showUntagged: showUntaggedMode,
         showUndescribed: showUndescribedMode,
+        offset: (currentPage - 1) * itemsPerPage,
+        limit: itemsPerPage,
       };
       if (!reviewDuplicatesMode && !showUnassignedMode && !showUntaggedMode && !showUndescribedMode && currentCollectionId !== null) {
         filter.collectionId = currentCollectionId;
@@ -40,15 +53,23 @@ export default function HomePage() {
       if (searchTerm) {
         filter.searchTerm = searchTerm;
       }
-      return getImages(filter);
+      const result = await getImages(filter);
+      setTotalImagesForPagination(result.totalCount);
+      return result.images;
     },
-    [currentCollectionId, searchTerm, refreshKey, reviewDuplicatesMode, showUnassignedMode, showUntaggedMode, showUndescribedMode],
+    [currentCollectionId, searchTerm, refreshKey, reviewDuplicatesMode, showUnassignedMode, showUntaggedMode, showUndescribedMode, currentPage, itemsPerPage],
     []
   );
+  const images = queryResult; // queryResult already contains the images array
+
+  const resetPaginationAndSelection = () => {
+    setCurrentPage(1);
+    setSelectedImageIds(new Set());
+  }
 
   const handleSearch = useCallback((term: string) => {
     setSearchTerm(term);
-    setSelectedImageIds(new Set()); 
+    resetPaginationAndSelection();
   }, []);
 
   const handleCollectionSelect = useCallback((collectionId: number | null) => {
@@ -57,12 +78,13 @@ export default function HomePage() {
     if (showUnassignedMode) setShowUnassignedMode(false);
     if (showUntaggedMode) setShowUntaggedMode(false);
     if (showUndescribedMode) setShowUndescribedMode(false);
-    setSearchTerm(''); 
-    setSelectedImageIds(new Set()); 
+    setSearchTerm('');
+    resetPaginationAndSelection();
   }, [reviewDuplicatesMode, showUnassignedMode, showUntaggedMode, showUndescribedMode]);
 
   const handleUploadComplete = useCallback(() => {
     setRefreshKey(prev => prev + 1);
+    // Don't reset pagination here, as new images should appear on the current page or first if sorted by date
   }, []);
 
   const handleImageUpdate = useCallback(() => {
@@ -77,9 +99,9 @@ export default function HomePage() {
       setShowUnassignedMode(false);
       setShowUntaggedMode(false);
       setShowUndescribedMode(false);
-      setSearchTerm(''); 
+      setSearchTerm('');
     }
-    setSelectedImageIds(new Set()); 
+    resetPaginationAndSelection();
   }, [reviewDuplicatesMode]);
 
   const toggleShowUnassignedMode = useCallback(() => {
@@ -90,9 +112,9 @@ export default function HomePage() {
       setReviewDuplicatesMode(false);
       setShowUntaggedMode(false);
       setShowUndescribedMode(false);
-      setSearchTerm(''); 
+      setSearchTerm('');
     }
-    setSelectedImageIds(new Set()); 
+    resetPaginationAndSelection();
   }, [showUnassignedMode]);
 
   const toggleShowUntaggedMode = useCallback(() => {
@@ -105,7 +127,7 @@ export default function HomePage() {
       setShowUndescribedMode(false);
       setSearchTerm('');
     }
-    setSelectedImageIds(new Set());
+    resetPaginationAndSelection();
   }, [showUntaggedMode]);
 
   const toggleShowUndescribedMode = useCallback(() => {
@@ -118,7 +140,7 @@ export default function HomePage() {
       setShowUntaggedMode(false);
       setSearchTerm('');
     }
-    setSelectedImageIds(new Set());
+    resetPaginationAndSelection();
   }, [showUndescribedMode]);
 
 
@@ -134,7 +156,7 @@ export default function HomePage() {
     });
   }, []);
 
-  const handleSelectAllImages = useCallback(() => {
+  const handleSelectAllImagesOnPage = useCallback(() => {
     if (images) {
       setSelectedImageIds(new Set(images.map(img => img.id!)));
     }
@@ -168,7 +190,7 @@ export default function HomePage() {
       id: progressToastId,
       title: "Procesando Descripciones...",
       description: `0 de ${totalToProcess} imágenes procesadas.`,
-      duration: Infinity, // Keep toast until dismissed or updated
+      duration: Infinity, 
     });
 
     for (const imageId of imageIdArray) {
@@ -194,14 +216,14 @@ export default function HomePage() {
           description: `No se pudo generar descripción para la imagen ID ${imageId}. ${ (error as Error).message.includes('429') ? 'Límite de API alcanzado.' : (error as Error).message }`
         });
       }
-      toast({ // Update progress toast
+      toast({ 
         id: progressToastId,
         title: "Procesando Descripciones...",
         description: `${processedCount} de ${totalToProcess} imágenes procesadas.`,
       });
     }
 
-    toast.dismiss(progressToastId); // Dismiss progress toast
+    toast.dismiss(progressToastId); 
     toast({
       title: "Generación en Lote Finalizada",
       description: `${successCount} descripciones generadas. ${errorCount > 0 ? `${errorCount} fallaron.` : ''}`,
@@ -213,8 +235,39 @@ export default function HomePage() {
     handleDeselectAllImages();
   };
 
+  // Pagination handlers
+  const totalPages = Math.ceil(totalImagesForPagination / itemsPerPage);
 
-  if (images === undefined) {
+  const handleNextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(prev => prev + 1);
+      setSelectedImageIds(new Set());
+    }
+  };
+
+  const handlePreviousPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(prev => prev - 1);
+      setSelectedImageIds(new Set());
+    }
+  };
+
+  const handleItemsPerPageChange = (value: string) => {
+    setItemsPerPage(parseInt(value, 10));
+    setCurrentPage(1); // Reset to first page
+    setSelectedImageIds(new Set());
+  };
+
+  const handleNumberOfColumnsChange = (value: string) => {
+    setNumberOfColumns(parseInt(value, 10));
+  };
+  
+  // Calculate range for "Mostrando X-Y de Z"
+  const firstItemOnPage = totalImagesForPagination > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0;
+  const lastItemOnPage = Math.min(currentPage * itemsPerPage, totalImagesForPagination);
+
+
+  if (images === undefined) { // queryResult is undefined initially
     return (
       <div className="flex justify-center items-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -243,8 +296,8 @@ export default function HomePage() {
           </p>
           <div className="flex items-center gap-2 flex-wrap">
             {images && selectedImageIds.size !== images.length && (
-              <Button variant="outline" size="sm" onClick={handleSelectAllImages} disabled={isBulkDescribing}>
-                <CheckSquare className="mr-2 h-4 w-4" /> Seleccionar Todo
+              <Button variant="outline" size="sm" onClick={handleSelectAllImagesOnPage} disabled={isBulkDescribing}>
+                <CheckSquare className="mr-2 h-4 w-4" /> Seleccionar Página
               </Button>
             )}
             {selectedImageIds.size > 0 && (
@@ -263,14 +316,62 @@ export default function HomePage() {
         </div>
       )}
 
-      {images && images.length > 0 && (
+      {/* View Options and Pagination Controls */}
+      <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4 px-1">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="flex items-center gap-2">
+            <Label htmlFor="items-per-page-select" className="text-sm whitespace-nowrap">Imágenes por página:</Label>
+            <Select value={itemsPerPage.toString()} onValueChange={handleItemsPerPageChange}>
+              <SelectTrigger id="items-per-page-select" className="h-9 w-[80px]">
+                <SelectValue placeholder="Número" />
+              </SelectTrigger>
+              <SelectContent>
+                {ITEMS_PER_PAGE_OPTIONS.map(opt => (
+                  <SelectItem key={opt} value={opt.toString()}>{opt}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-2">
+            <Label htmlFor="num-columns-select" className="text-sm whitespace-nowrap">Columnas:</Label>
+            <Select value={numberOfColumns.toString()} onValueChange={handleNumberOfColumnsChange}>
+              <SelectTrigger id="num-columns-select" className="h-9 w-[70px]">
+                <SelectValue placeholder="Número" />
+              </SelectTrigger>
+              <SelectContent>
+                {NUM_COLUMNS_OPTIONS.map(opt => (
+                  <SelectItem key={opt} value={opt.toString()}>{opt}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        
+        {totalImagesForPagination > 0 && totalPages > 1 && (
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handlePreviousPage} disabled={currentPage === 1}>
+              <ChevronLeft className="h-4 w-4" />
+              Anterior
+            </Button>
+            <span className="text-sm text-muted-foreground whitespace-nowrap">
+              Página {currentPage} de {totalPages}
+            </span>
+            <Button variant="outline" size="sm" onClick={handleNextPage} disabled={currentPage === totalPages}>
+              Siguiente
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+      </div>
+      
+      {totalImagesForPagination > 0 && (
         <div className="text-sm text-muted-foreground py-1 px-1 text-center mb-2">
-          {images.length} imagen{images.length === 1 ? '' : 'es'} en la vista actual.
+          Mostrando {firstItemOnPage} - {lastItemOnPage} de {totalImagesForPagination} imagen{totalImagesForPagination === 1 ? '' : 'es'}.
         </div>
       )}
       
       <ImageGrid
-        images={images}
+        images={images || []}
         onUpdate={handleImageUpdate}
         isReviewDuplicatesMode={reviewDuplicatesMode}
         isShowUnassignedMode={showUnassignedMode}
@@ -278,7 +379,8 @@ export default function HomePage() {
         isShowUndescribedMode={showUndescribedMode}
         selectedImageIds={selectedImageIds}
         onImageToggleSelection={handleToggleImageSelection}
-        searchTerm={searchTerm} 
+        searchTerm={searchTerm}
+        numberOfColumns={numberOfColumns} 
       />
       {isBulkAddToCollectionDialogOpen && (
         <BulkAddToCollectionDialog
@@ -294,4 +396,3 @@ export default function HomePage() {
     </AppLayout>
   );
 }
-    
