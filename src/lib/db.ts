@@ -93,14 +93,17 @@ const sortAndPaginateArray = (
   offset?: number,
   limit?: number
 ): ImageMetadata[] => {
+  // Sort by name primarily, then by ID (as a tie-breaker for same names from different original files)
   imagesArray.sort((a, b) => {
     const nameA = a.name.toLowerCase();
     const nameB = b.name.toLowerCase();
     if (nameA < nameB) return -1;
     if (nameA > nameB) return 1;
-    if ((a.id || 0) < (b.id || 0)) return -1;
-    if ((a.id || 0) > (b.id || 0)) return 1;
-    return (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0); // Default sort by date desc if names/IDs are same
+    // If names are the same, sort by original upload time (createdAt) or ID
+    // Using ID as a more stable tie-breaker than createdAt if times are identical
+    if ((a.id ?? 0) < (b.id ?? 0)) return -1;
+    if ((a.id ?? 0) > (b.id ?? 0)) return 1;
+    return 0; // Should be very rare to have same name and same ID if IDs are unique
   });
 
   const effectiveOffset = offset ?? 0;
@@ -128,8 +131,12 @@ export const getImages = async (filter?: {
     if (potentialDuplicatesFlagged.length === 0) {
       return { images: [], totalCount: 0 };
     }
+    // Get all names of images flagged as potential duplicates
     const duplicateNames = new Set(potentialDuplicatesFlagged.map(img => img.name.toLowerCase()));
+    
+    // Fetch ALL images (flagged or not) that have these names
     preliminaryImagesArray = await db.images.filter(img => duplicateNames.has(img.name.toLowerCase())).toArray();
+
   } else {
     if (filter?.showUnassigned) {
       query = db.images.filter(img => !img.isPotentialDuplicate && (!img.collectionIds || img.collectionIds.length === 0));
@@ -138,13 +145,10 @@ export const getImages = async (filter?: {
     } else if (filter?.showUndescribed) {
       query = db.images.filter(img => !img.isPotentialDuplicate && img.hasDescription === false);
     } else if (filter?.collectionId !== null && filter?.collectionId !== undefined) {
-      // Dexie's where clause with equals on an array needs a specific value, not 'includes'.
-      // So, we filter after getting images in a collection.
-      // A more efficient way would be to query images by collectionId using an index if Dexie supported multiEntry indexes for 'equals' with anyOf logic directly.
-      // For now, this will work: query based on collectionId
       const targetCollectionId = filter.collectionId;
       query = db.images.where('collectionIds').equals(targetCollectionId).filter(img => !img.isPotentialDuplicate);
     } else {
+      // Default: all images that are not potential duplicates
       query = db.images.filter(img => !img.isPotentialDuplicate);
     }
 
@@ -180,14 +184,15 @@ export const getImages = async (filter?: {
 
   if (preliminaryImagesArray !== undefined) { // reviewDuplicates case
     totalCount = preliminaryImagesArray.length;
+    // Sorting for reviewDuplicates should group by name, then by original upload date/ID
+    // The sortAndPaginateArray helper handles this grouping by name then ID.
     finalImages = sortAndPaginateArray(preliminaryImagesArray, filter?.offset, filter?.limit);
   } else if (query) { // Other cases
     totalCount = await query.count();
     
-    // Apply general sorting (descending by createdAt)
-    // Dexie's orderBy is for indexed fields. For complex sorts or unindexed, sort after toArray().
-    // createdAt is indexed, so we can use orderBy.
-    let sortedQuery = query.orderBy('createdAt').reverse(); // Sorts by date descending
+    // Clone the query before applying orderBy, as a precaution if .count() modifies state
+    let sortableQuery = query.clone();
+    let sortedQuery = sortableQuery.orderBy('createdAt').reverse();
 
     if (filter?.offset !== undefined && filter?.limit !== undefined) {
       finalImages = await sortedQuery.offset(filter.offset).limit(filter.limit).toArray();
@@ -760,3 +765,6 @@ export const bulkAddImagesToCollections = async (imageIds: number[], targetColle
     }
   });
 };
+
+
+    
