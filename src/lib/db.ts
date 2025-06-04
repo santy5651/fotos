@@ -12,11 +12,11 @@ export class PicStackDexie extends Dexie {
       images: '++id, name, *tags, createdAt, isFavorite, isProtected, *collectionIds, mimeType, isPotentialDuplicate, hasTags, hasDescription',
       collections: '++id, name, parentId, createdAt',
     });
+    // Keeping older versions for upgrade paths if users have them
     this.version(5).stores({
       images: '++id, name, *tags, createdAt, isFavorite, isProtected, *collectionIds, mimeType, isPotentialDuplicate, hasTags, hasDescription',
       collections: '++id, name, parentId, createdAt',
     }).upgrade(async tx => {
-      console.log("Upgrading DB from version 4 to 5 (if applicable for hasDescription)");
       await tx.table("images").toCollection().modify(image => {
         if (image.hasDescription === undefined) {
             image.hasDescription = !!(image.description && image.description.trim() !== "");
@@ -27,7 +27,6 @@ export class PicStackDexie extends Dexie {
       images: '++id, name, *tags, createdAt, isFavorite, isProtected, *collectionIds, mimeType, isPotentialDuplicate, hasTags',
       collections: '++id, name, parentId, createdAt',
     }).upgrade(async tx => {
-      console.log("Upgrading DB from version 3 to 4 (if applicable for hasTags)");
       await tx.table("images").toCollection().modify(image => {
         if (image.hasTags === undefined) {
           image.hasTags = !!(image.tags && image.tags.length > 0);
@@ -38,7 +37,6 @@ export class PicStackDexie extends Dexie {
       images: '++id, name, *tags, createdAt, isFavorite, isProtected, *collectionIds, mimeType, isPotentialDuplicate',
       collections: '++id, name, parentId, createdAt',
     }).upgrade(tx => {
-      console.log("Upgrading DB from version 2 to 3 (if applicable for isPotentialDuplicate)");
       return tx.table("images").toCollection().modify(image => {
         if (image.isPotentialDuplicate === undefined) {
           image.isPotentialDuplicate = false;
@@ -87,23 +85,19 @@ export const addImage = async (image: Omit<ImageMetadata, 'id' | 'createdAt' | '
   return db.images.add(newImage);
 };
 
-// Helper function to sort and paginate an array of images (used for reviewDuplicates mode)
 const sortAndPaginateArray = (
   imagesArray: ImageMetadata[],
   offset?: number,
   limit?: number
 ): ImageMetadata[] => {
-  // Sort by name primarily, then by ID (as a tie-breaker for same names from different original files)
   imagesArray.sort((a, b) => {
     const nameA = a.name.toLowerCase();
     const nameB = b.name.toLowerCase();
     if (nameA < nameB) return -1;
     if (nameA > nameB) return 1;
-    // If names are the same, sort by original upload time (createdAt) or ID
-    // Using ID as a more stable tie-breaker than createdAt if times are identical
     if ((a.id ?? 0) < (b.id ?? 0)) return -1;
     if ((a.id ?? 0) > (b.id ?? 0)) return 1;
-    return 0; // Should be very rare to have same name and same ID if IDs are unique
+    return 0;
   });
 
   const effectiveOffset = offset ?? 0;
@@ -131,12 +125,8 @@ export const getImages = async (filter?: {
     if (potentialDuplicatesFlagged.length === 0) {
       return { images: [], totalCount: 0 };
     }
-    // Get all names of images flagged as potential duplicates
     const duplicateNames = new Set(potentialDuplicatesFlagged.map(img => img.name.toLowerCase()));
-    
-    // Fetch ALL images (flagged or not) that have these names
     preliminaryImagesArray = await db.images.filter(img => duplicateNames.has(img.name.toLowerCase())).toArray();
-
   } else {
     if (filter?.showUnassigned) {
       query = db.images.filter(img => !img.isPotentialDuplicate && (!img.collectionIds || img.collectionIds.length === 0));
@@ -148,7 +138,6 @@ export const getImages = async (filter?: {
       const targetCollectionId = filter.collectionId;
       query = db.images.where('collectionIds').equals(targetCollectionId).filter(img => !img.isPotentialDuplicate);
     } else {
-      // Default: all images that are not potential duplicates
       query = db.images.filter(img => !img.isPotentialDuplicate);
     }
 
@@ -184,23 +173,18 @@ export const getImages = async (filter?: {
 
   if (preliminaryImagesArray !== undefined) { // reviewDuplicates case
     totalCount = preliminaryImagesArray.length;
-    // Sorting for reviewDuplicates should group by name, then by original upload date/ID
-    // The sortAndPaginateArray helper handles this grouping by name then ID.
     finalImages = sortAndPaginateArray(preliminaryImagesArray, filter?.offset, filter?.limit);
-  } else if (query) { // Other cases
-    totalCount = await query.count();
-    
-    // Clone the query before applying orderBy, as a precaution if .count() modifies state
-    let sortableQuery = query.clone();
-    let sortedQuery = sortableQuery.orderBy('createdAt').reverse();
+  } else if (query) { // Other cases: filter, then sort in JS, then paginate in JS
+    let allFilteredImages = await query.toArray();
+    totalCount = allFilteredImages.length;
 
-    if (filter?.offset !== undefined && filter?.limit !== undefined) {
-      finalImages = await sortedQuery.offset(filter.offset).limit(filter.limit).toArray();
-    } else if (filter?.limit !== undefined) {
-      finalImages = await sortedQuery.limit(filter.limit).toArray();
-    } else {
-      finalImages = await sortedQuery.toArray();
-    }
+    // Sort in JavaScript by createdAt descending (newest first)
+    allFilteredImages.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    // Apply pagination
+    const effectiveOffset = filter?.offset ?? 0;
+    const end = filter?.limit !== undefined ? effectiveOffset + filter.limit : undefined;
+    finalImages = allFilteredImages.slice(effectiveOffset, end);
   } else {
     // Should not happen if logic is correct, but as a fallback:
     return { images: [], totalCount: 0 };
