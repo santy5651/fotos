@@ -126,10 +126,12 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
       onUpdate(); 
     } catch (error) {
       console.error("Error regenerating tags:", error);
+      const errorMessage = (error as Error).message;
+      const isRateLimitError = errorMessage.includes('429') || errorMessage.toLowerCase().includes('quota') || errorMessage.toLowerCase().includes('rate limit');
       toast({
         variant: "destructive",
         title: "Fallo al Regenerar Etiquetas",
-        description: `No se pudieron generar etiquetas para ${image.name}. ${ (error as Error).message.includes('429') ? 'Límite de API alcanzado. Intenta más tarde.' : (error as Error).message }`
+        description: `No se pudieron generar etiquetas para ${image.name}. ${ isRateLimitError ? 'Límite de API alcanzado. Intenta más tarde.' : errorMessage }`
       });
     } finally {
       setIsRetagging(false);
@@ -145,15 +147,28 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
     try {
       const dataUri = await blobToDataURL(image.file, { defaultMimeTypeIfGeneric: 'image/png' });
       const aiResult = await describeImage({ photoDataUri: dataUri });
-      await updateImage(image.id, { description: aiResult.description, hasDescription: aiResult.description.trim() !== "" });
-      toast({ title: "Descripción Generada", description: `Se generó una descripción para ${image.name}.` });
-      onUpdate();
+      
+      const newDescription = aiResult.description;
+      // Ensure newDescription is a string before trimming, default to empty string if null/undefined
+      const descriptionToSave = typeof newDescription === 'string' ? newDescription : "";
+      const newHasDescription = descriptionToSave.trim() !== "";
+
+      await updateImage(image.id, { description: descriptionToSave, hasDescription: newHasDescription });
+
+      if (newHasDescription) {
+        toast({ title: "Descripción Generada", description: `Se generó una descripción para ${image.name}.` });
+      } else {
+        toast({ title: "Descripción No Detallada", description: `La IA generó una descripción vacía o no pudo detallar ${image.name}. Intente de nuevo o con otra imagen.`, duration: 7000 });
+      }
+      onUpdate(); 
     } catch (error) {
       console.error("Error generating description:", error);
+      const errorMessage = (error as Error).message;
+      const isRateLimitError = errorMessage.includes('429') || errorMessage.toLowerCase().includes('quota') || errorMessage.toLowerCase().includes('rate limit');
       toast({
         variant: "destructive",
         title: "Fallo al Generar Descripción",
-        description: `No se pudo generar una descripción para ${image.name}. ${ (error as Error).message.includes('429') ? 'Límite de API alcanzado. Intenta más tarde.' : (error as Error).message }`
+        description: `No se pudo generar una descripción para ${image.name}. ${ isRateLimitError ? 'Límite de API alcanzado. Intenta más tarde.' : errorMessage }`
       });
     } finally {
       setIsGeneratingDescription(false);
@@ -441,5 +456,3 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
     </>
   );
 }
-
-    
