@@ -90,15 +90,8 @@ const sortAndPaginateArray = (
   offset?: number,
   limit?: number
 ): ImageMetadata[] => {
-  imagesArray.sort((a, b) => {
-    const nameA = a.name.toLowerCase();
-    const nameB = b.name.toLowerCase();
-    if (nameA < nameB) return -1;
-    if (nameA > nameB) return 1;
-    if ((a.id ?? 0) < (b.id ?? 0)) return -1;
-    if ((a.id ?? 0) > (b.id ?? 0)) return 1;
-    return 0;
-  });
+  // Sort by createdAt descending (newest first)
+  imagesArray.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   const effectiveOffset = offset ?? 0;
   const end = limit !== undefined ? effectiveOffset + limit : undefined;
@@ -126,6 +119,8 @@ export const getImages = async (filter?: {
       return { images: [], totalCount: 0 };
     }
     const duplicateNames = new Set(potentialDuplicatesFlagged.map(img => img.name.toLowerCase()));
+    // For duplicate review, we want all images with those names, regardless of their own `isPotentialDuplicate` flag,
+    // because we need to see the original too.
     preliminaryImagesArray = await db.images.filter(img => duplicateNames.has(img.name.toLowerCase())).toArray();
   } else {
     if (filter?.showUnassigned) {
@@ -138,6 +133,7 @@ export const getImages = async (filter?: {
       const targetCollectionId = filter.collectionId;
       query = db.images.where('collectionIds').equals(targetCollectionId).filter(img => !img.isPotentialDuplicate);
     } else {
+      // Default: show all non-duplicate images
       query = db.images.filter(img => !img.isPotentialDuplicate);
     }
 
@@ -173,20 +169,25 @@ export const getImages = async (filter?: {
 
   if (preliminaryImagesArray !== undefined) { // reviewDuplicates case
     totalCount = preliminaryImagesArray.length;
-    finalImages = sortAndPaginateArray(preliminaryImagesArray, filter?.offset, filter?.limit);
-  } else if (query) { // Other cases: filter, then sort in JS, then paginate in JS
-    let allFilteredImages = await query.toArray();
-    totalCount = allFilteredImages.length;
-
-    // Sort in JavaScript by createdAt descending (newest first)
-    allFilteredImages.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-    // Apply pagination
+    // For duplicate review, sort by name then ID to group them
+    preliminaryImagesArray.sort((a, b) => {
+        const nameA = a.name.toLowerCase();
+        const nameB = b.name.toLowerCase();
+        if (nameA < nameB) return -1;
+        if (nameA > nameB) return 1;
+        if ((a.id ?? 0) < (b.id ?? 0)) return -1; // Ensure originals might appear first if IDs are sequential
+        if ((a.id ?? 0) > (b.id ?? 0)) return 1;
+        return 0;
+    });
     const effectiveOffset = filter?.offset ?? 0;
     const end = filter?.limit !== undefined ? effectiveOffset + filter.limit : undefined;
-    finalImages = allFilteredImages.slice(effectiveOffset, end);
+    finalImages = preliminaryImagesArray.slice(effectiveOffset, end);
+
+  } else if (query) {
+    let allFilteredImages = await query.toArray(); // Fetch all matching items
+    totalCount = allFilteredImages.length; // Count them
+    finalImages = sortAndPaginateArray(allFilteredImages, filter?.offset, filter?.limit); // Then sort and paginate in JS
   } else {
-    // Should not happen if logic is correct, but as a fallback:
     return { images: [], totalCount: 0 };
   }
   
@@ -384,7 +385,7 @@ export const exportDataAsSingleJson = async (): Promise<string> => {
     let imageDataUri: string | undefined = undefined;
     if (file instanceof Blob) {
       try {
-        imageDataUri = await blobToDataURL(file);
+        imageDataUri = await blobToDataURL(file); // No options needed for general export
       } catch (error) {
         console.warn(`Could not convert blob to data URI for image ID ${img.id}:`, error);
       }
@@ -713,10 +714,25 @@ export const getImagesPerCollection = async (): Promise<{ name: string, count: n
   return counts.filter(c => c.count > 0);
 };
 
-export const blobToDataURL = (blob: Blob): Promise<string> => {
+export const blobToDataURL = (
+  blob: Blob,
+  options?: { defaultMimeTypeIfGeneric?: 'image/png' | 'image/jpeg' }
+): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result as string);
+    reader.onloadend = () => {
+      let result = reader.result as string;
+      // Check and override MIME type in the data URL string if necessary
+      if (options?.defaultMimeTypeIfGeneric) {
+        const currentMimeType = result.substring(result.indexOf(':') + 1, result.indexOf(';'));
+        if (currentMimeType === 'application/octet-stream' || !currentMimeType) {
+          console.warn(`Original MIME type in data URI was '${currentMimeType}'. Overriding to '${options.defaultMimeTypeIfGeneric}' for AI processing.`);
+          const base64Data = result.substring(result.indexOf(',') + 1);
+          result = `data:${options.defaultMimeTypeIfGeneric};base64,${base64Data}`;
+        }
+      }
+      resolve(result);
+    };
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
@@ -750,5 +766,7 @@ export const bulkAddImagesToCollections = async (imageIds: number[], targetColle
   });
 };
 
+
+    
 
     

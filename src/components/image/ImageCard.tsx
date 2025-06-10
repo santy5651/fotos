@@ -20,7 +20,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 import { tagImage } from '@/ai/flows/tag-image'; 
 import { describeImage } from '@/ai/flows/describe-image-flow';
-import ImageDetailsModal from './ImageDetailsModal'; // New import
+import ImageDetailsModal from './ImageDetailsModal';
 
 interface ImageCardProps {
   image: ImageMetadata;
@@ -38,7 +38,7 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
   const [isRetagging, setIsRetagging] = useState(false); 
   const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
-  const [isImageDetailsModalOpen, setIsImageDetailsModalOpen] = useState(false); // New state
+  const [isImageDetailsModalOpen, setIsImageDetailsModalOpen] = useState(false);
 
 
   useEffect(() => {
@@ -119,7 +119,7 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
     }
     setIsRetagging(true);
     try {
-      const dataUri = await blobToDataURL(image.file);
+      const dataUri = await blobToDataURL(image.file, { defaultMimeTypeIfGeneric: 'image/png' });
       const aiResult = await tagImage({ photoDataUri: dataUri });
       await updateImage(image.id, { tags: aiResult.tags, hasTags: aiResult.tags.length > 0 });
       toast({ title: "Etiquetas Regeneradas", description: `Se generaron nuevas etiquetas para ${image.name}.` });
@@ -143,7 +143,7 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
     }
     setIsGeneratingDescription(true);
     try {
-      const dataUri = await blobToDataURL(image.file);
+      const dataUri = await blobToDataURL(image.file, { defaultMimeTypeIfGeneric: 'image/png' });
       const aiResult = await describeImage({ photoDataUri: dataUri });
       await updateImage(image.id, { description: aiResult.description, hasDescription: aiResult.description.trim() !== "" });
       toast({ title: "Descripción Generada", description: `Se generó una descripción para ${image.name}.` });
@@ -441,3 +441,5 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
     </>
   );
 }
+
+    

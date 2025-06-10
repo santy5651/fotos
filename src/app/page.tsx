@@ -60,7 +60,7 @@ export default function HomePage() {
     [currentCollectionId, searchTerm, refreshKey, reviewDuplicatesMode, showUnassignedMode, showUntaggedMode, showUndescribedMode, currentPage, itemsPerPage],
     []
   );
-  const images = queryResult; // queryResult already contains the images array
+  const images = queryResult; 
 
   const resetPaginationAndSelection = () => {
     setCurrentPage(1);
@@ -84,7 +84,6 @@ export default function HomePage() {
 
   const handleUploadComplete = useCallback(() => {
     setRefreshKey(prev => prev + 1);
-    // Don't reset pagination here, as new images should appear on the current page or first if sorted by date
   }, []);
 
   const handleImageUpdate = useCallback(() => {
@@ -203,7 +202,7 @@ export default function HomePage() {
           continue;
         }
 
-        const dataUri = await blobToDataURL(image.file);
+        const dataUri = await blobToDataURL(image.file, { defaultMimeTypeIfGeneric: 'image/png' });
         const aiResult = await describeImage({ photoDataUri: dataUri });
         await updateImage(imageId, { description: aiResult.description, hasDescription: aiResult.description.trim() !== "" });
         successCount++;
@@ -254,7 +253,7 @@ export default function HomePage() {
 
   const handleItemsPerPageChange = (value: string) => {
     setItemsPerPage(parseInt(value, 10));
-    setCurrentPage(1); // Reset to first page
+    setCurrentPage(1); 
     setSelectedImageIds(new Set());
   };
 
@@ -262,12 +261,11 @@ export default function HomePage() {
     setNumberOfColumns(parseInt(value, 10));
   };
   
-  // Calculate range for "Mostrando X-Y de Z"
   const firstItemOnPage = totalImagesForPagination > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0;
   const lastItemOnPage = Math.min(currentPage * itemsPerPage, totalImagesForPagination);
 
 
-  if (images === undefined) { // queryResult is undefined initially
+  if (images === undefined) {
     return (
       <div className="flex justify-center items-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -316,7 +314,6 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* View Options and Pagination Controls */}
       <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4 px-1">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <div className="flex items-center gap-2">
@@ -396,3 +393,5 @@ export default function HomePage() {
     </AppLayout>
   );
 }
+
+    

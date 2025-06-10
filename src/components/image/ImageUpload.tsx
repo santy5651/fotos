@@ -9,7 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { addImage, blobToDataURL, checkIfImageExistsByName } from '@/lib/db';
 import type { ImageMetadata } from '@/types';
 import { tagImage } from '@/ai/flows/tag-image';
-import { describeImage } from '@/ai/flows/describe-image-flow'; // New import
+import { describeImage } from '@/ai/flows/describe-image-flow';
 
 interface ImageUploadProps {
   onUploadComplete: () => void;
@@ -52,8 +52,9 @@ export default function ImageUpload({ onUploadComplete }: ImageUploadProps) {
         // 1. Get dimensions
         const dimensions = await getImageDimensions(file);
 
-        // 2. Convert to data URI for AI
-        const dataUri = await blobToDataURL(file);
+        // 2. Convert to data URI for AI, defaulting to image/png if MIME type is generic
+        const dataUri = await blobToDataURL(file, { defaultMimeTypeIfGeneric: 'image/png' });
+
 
         // 3. AI Tagging
         try {
@@ -87,14 +88,14 @@ export default function ImageUpload({ onUploadComplete }: ImageUploadProps) {
         // 5. Prepare metadata
         const imageMetadata: Omit<ImageMetadata, 'id' | 'createdAt' | 'syncStatus' | 'file' | 'hasTags' | 'hasDescription'> & { file: File, hasTags: boolean, hasDescription: boolean } = {
           name: file.name,
-          file: file,
+          file: file, // Store the original file
           tags: tags,
           description: description,
           width: dimensions.width,
           height: dimensions.height,
           isFavorite: false,
           isProtected: false,
-          mimeType: file.type,
+          mimeType: file.type, // Store the original browser-detected MIME type
           collectionIds: [],
           isPotentialDuplicate: isPotentialDuplicate, 
           hasTags: tags.length > 0,
@@ -178,3 +179,5 @@ export default function ImageUpload({ onUploadComplete }: ImageUploadProps) {
     </div>
   );
 }
+
+    
