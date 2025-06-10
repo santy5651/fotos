@@ -19,7 +19,7 @@ const ITEMS_PER_PAGE_OPTIONS = [20, 50, 100, 200];
 const NUM_COLUMNS_OPTIONS = [2, 3, 4, 5, 6];
 
 export default function HomePage() {
-  const { toast } = useToast();
+  const { toast, dismiss } = useToast();
   const [currentCollectionId, setCurrentCollectionId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [reviewDuplicatesMode, setReviewDuplicatesMode] = useState<boolean>(false);
@@ -215,14 +215,18 @@ export default function HomePage() {
           description: `No se pudo generar descripción para la imagen ID ${imageId}. ${ (error as Error).message.includes('429') ? 'Límite de API alcanzado.' : (error as Error).message }`
         });
       }
-      toast({ 
-        id: progressToastId,
+      // Update toast with new progress
+      // Note: The original toast object doesn't have an update method itself if using our custom hook directly.
+      // We need to call `toast` again with the same ID to update it.
+       toast({ 
+        id: progressToastId, // Use the same ID to update the existing toast
         title: "Procesando Descripciones...",
         description: `${processedCount} de ${totalToProcess} imágenes procesadas.`,
+        duration: Infinity, // Keep it sticky
       });
     }
 
-    toast.dismiss(progressToastId); 
+    dismiss(progressToastId); 
     toast({
       title: "Generación en Lote Finalizada",
       description: `${successCount} descripciones generadas. ${errorCount > 0 ? `${errorCount} fallaron.` : ''}`,
