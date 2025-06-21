@@ -110,88 +110,97 @@ export const getImages = async (filter?: {
   limit?: number;
 }): Promise<{ images: ImageMetadata[], totalCount: number }> => {
   
-  let query: Dexie.Collection<ImageMetadata, number> | undefined;
-  let preliminaryImagesArray: ImageMetadata[] | undefined;
-
+  // Handle special 'reviewDuplicates' mode first, as it's very different.
   if (filter?.reviewDuplicates) {
     const potentialDuplicatesFlagged = await db.images.filter(img => img.isPotentialDuplicate === true).toArray();
     if (potentialDuplicatesFlagged.length === 0) {
       return { images: [], totalCount: 0 };
     }
     const duplicateNames = new Set(potentialDuplicatesFlagged.map(img => img.name.toLowerCase()));
-    // For duplicate review, we want all images with those names, regardless of their own `isPotentialDuplicate` flag,
-    // because we need to see the original too.
-    preliminaryImagesArray = await db.images.filter(img => duplicateNames.has(img.name.toLowerCase())).toArray();
-  } else {
-    if (filter?.showUnassigned) {
-      query = db.images.filter(img => !img.isPotentialDuplicate && (!img.collectionIds || img.collectionIds.length === 0));
-    } else if (filter?.showUntagged) {
-      query = db.images.filter(img => !img.isPotentialDuplicate && img.hasTags === false);
-    } else if (filter?.showUndescribed) {
-      query = db.images.filter(img => !img.isPotentialDuplicate && img.hasDescription === false);
-    } else if (filter?.collectionId !== null && filter?.collectionId !== undefined) {
-      const targetCollectionId = filter.collectionId;
-      query = db.images.where('collectionIds').equals(targetCollectionId).filter(img => !img.isPotentialDuplicate);
-    } else {
-      // Default: show all non-duplicate images
-      query = db.images.filter(img => !img.isPotentialDuplicate);
-    }
-
-    if (filter?.searchTerm && filter.searchTerm.trim() !== '') {
-      const searchTerm = filter.searchTerm.trim().toLowerCase();
-      const allCollections = await getCollections(); 
-
-      query = query.filter(img => {
-        if (img.name.toLowerCase().includes(searchTerm)) return true;
-        if (img.tags && img.tags.some(tag => tag.toLowerCase().includes(searchTerm))) return true;
-        if (img.description && img.description.toLowerCase().includes(searchTerm)) return true;
-        
-        if (searchTerm.startsWith('tag:')) {
-            const tagNameOnly = searchTerm.substring(4);
-            return img.tags && img.tags.some(tag => tag.toLowerCase() === tagNameOnly);
-        }
-
-        if (img.collectionIds && img.collectionIds.length > 0) {
-          const imageCollectionNames = img.collectionIds
-            .map(id => allCollections.find(c => c.id === id)?.name)
-            .filter((name): name is string => !!name);
-          if (imageCollectionNames.some(name => name.toLowerCase().includes(searchTerm))) {
-            return true;
-          }
-        }
-        return false;
-      });
-    }
-  }
-
-  let totalCount: number;
-  let finalImages: ImageMetadata[];
-
-  if (preliminaryImagesArray !== undefined) { // reviewDuplicates case
-    totalCount = preliminaryImagesArray.length;
-    // For duplicate review, sort by name then ID to group them
+    const preliminaryImagesArray = await db.images.filter(img => duplicateNames.has(img.name.toLowerCase())).toArray();
+    
+    const totalCount = preliminaryImagesArray.length;
+    // Sort by name then ID to group them
     preliminaryImagesArray.sort((a, b) => {
         const nameA = a.name.toLowerCase();
         const nameB = b.name.toLowerCase();
         if (nameA < nameB) return -1;
         if (nameA > nameB) return 1;
-        if ((a.id ?? 0) < (b.id ?? 0)) return -1; // Ensure originals might appear first if IDs are sequential
+        if ((a.id ?? 0) < (b.id ?? 0)) return -1;
         if ((a.id ?? 0) > (b.id ?? 0)) return 1;
         return 0;
     });
     const effectiveOffset = filter?.offset ?? 0;
     const end = filter?.limit !== undefined ? effectiveOffset + filter.limit : undefined;
-    finalImages = preliminaryImagesArray.slice(effectiveOffset, end);
-
-  } else if (query) {
-    let allFilteredImages = await query.toArray(); // Fetch all matching items
-    totalCount = allFilteredImages.length; // Count them
-    finalImages = sortAndPaginateArray(allFilteredImages, filter?.offset, filter?.limit); // Then sort and paginate in JS
-  } else {
-    return { images: [], totalCount: 0 };
+    const finalImages = preliminaryImagesArray.slice(effectiveOffset, end);
+    
+    return { images: finalImages, totalCount };
   }
-  
-  return { images: finalImages, totalCount };
+
+  // --- Main path for all other modes ---
+
+  let baseQuery: Dexie.Collection<ImageMetadata, number>;
+
+  // Start with the base filter for each mode, which excludes duplicates.
+  if (filter?.showUnassigned) {
+    baseQuery = db.images.filter(img => !img.isPotentialDuplicate && (!img.collectionIds || img.collectionIds.length === 0));
+  } else if (filter?.showUntagged) {
+    baseQuery = db.images.filter(img => !img.isPotentialDuplicate && img.hasTags === false);
+  } else if (filter?.showUndescribed) {
+    baseQuery = db.images.filter(img => !img.isPotentialDuplicate && img.hasDescription === false);
+  } else if (filter?.collectionId !== null && filter?.collectionId !== undefined) {
+    const targetCollectionId = filter.collectionId;
+    baseQuery = db.images.where('collectionIds').equals(targetCollectionId).filter(img => !img.isPotentialDuplicate);
+  } else {
+    // Default: show all non-duplicate images
+    baseQuery = db.images.filter(img => !img.isPotentialDuplicate);
+  }
+
+  const searchTerm = filter?.searchTerm?.trim().toLowerCase();
+
+  // If there's a search term, we have to filter in JS, which is less performant but necessary for complex queries.
+  if (searchTerm) {
+    const allCollections = await getCollections(); // Needed for searching by collection name
+    const allMatchingBaseImages = await baseQuery.toArray(); // Get all images matching the base filter
+
+    // Then, apply search term filter in JS
+    const searchedImages = allMatchingBaseImages.filter(img => {
+      if (img.name.toLowerCase().includes(searchTerm)) return true;
+      if (img.tags?.some(tag => tag.toLowerCase().includes(searchTerm))) return true;
+      if (img.description?.toLowerCase().includes(searchTerm)) return true;
+      
+      if (searchTerm.startsWith('tag:')) {
+          const tagNameOnly = searchTerm.substring(4);
+          return img.tags?.some(tag => tag.toLowerCase() === tagNameOnly);
+      }
+
+      if (img.collectionIds?.length) {
+        const imageCollectionNames = img.collectionIds
+          .map(id => allCollections.find(c => c.id === id)?.name)
+          .filter((name): name is string => !!name);
+        if (imageCollectionNames.some(name => name.toLowerCase().includes(searchTerm))) {
+          return true;
+        }
+      }
+      return false;
+    });
+
+    const totalCount = searchedImages.length;
+    // After filtering, sort and paginate the results in JS
+    const finalImages = sortAndPaginateArray(searchedImages, filter.offset, filter.limit);
+    return { images: finalImages, totalCount };
+  } else {
+    // No search term: We can use the much faster indexed sorting and pagination.
+    const totalCount = await baseQuery.count();
+    const finalImages = await baseQuery
+      .orderBy('createdAt')
+      .reverse()
+      .offset(filter?.offset ?? 0)
+      .limit(filter?.limit ?? 50) // Use a sensible default
+      .toArray();
+
+    return { images: finalImages, totalCount };
+  }
 };
 
 
