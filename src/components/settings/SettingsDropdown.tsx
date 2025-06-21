@@ -42,7 +42,8 @@ export default function SettingsDropdown() {
         });
       }
       const zipBlob = await zip.generateAsync({ type: "blob" });
-      saveAs(zipBlob, "picstack_local_export.zip");
+      const formattedDate = new Date().toISOString().split('T')[0];
+      saveAs(zipBlob, `picstack_local_export_V1_${formattedDate}.zip`);
       toast({ title: "Export ZIP Successful", description: "Data exported as a ZIP file." });
     } catch (error) {
       toast({ variant: "destructive", title: "Export ZIP Failed", description: (error as Error).message });
@@ -55,7 +56,8 @@ export default function SettingsDropdown() {
     try {
       const singleJsonString = await exportDataAsSingleJson();
       const blob = new Blob([singleJsonString], { type: "application/json;charset=utf-8" });
-      saveAs(blob, "picstack_data.json");
+      const formattedDate = new Date().toISOString().split('T')[0];
+      saveAs(blob, `picstack_data_V1_${formattedDate}.json`);
       toast({ title: "Export JSON Successful", description: "Data exported as a single JSON file." });
     } catch (error) {
       toast({ variant: "destructive", title: "Export JSON Failed", description: (error as Error).message });
@@ -265,3 +267,4 @@ export default function SettingsDropdown() {
   );
 }
 
+    
