@@ -15,7 +15,7 @@ import { describeImage } from '@/ai/flows/describe-image-flow';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from '@/components/ui/label';
 
-const ITEMS_PER_PAGE_OPTIONS = [20, 50, 100, 200];
+const ITEMS_PER_PAGE_OPTIONS = [2, 4, 6, 8, 10, 12, 20, 24, 50];
 const NUM_COLUMNS_OPTIONS = [2, 3, 4, 5, 6];
 
 export default function HomePage() {
@@ -33,7 +33,7 @@ export default function HomePage() {
 
   // Pagination and Layout States
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(ITEMS_PER_PAGE_OPTIONS[1]); // Default to 50
+  const [itemsPerPage, setItemsPerPage] = useState(4); // Default to 4
   const [numberOfColumns, setNumberOfColumns] = useState(NUM_COLUMNS_OPTIONS[2]); // Default to 4
   const [totalImagesForPagination, setTotalImagesForPagination] = useState(0);
 
@@ -397,5 +397,3 @@ export default function HomePage() {
     </AppLayout>
   );
 }
-
-    
