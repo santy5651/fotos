@@ -190,14 +190,12 @@ export const getImages = async (filter?: {
     const finalImages = sortAndPaginateArray(searchedImages, filter.offset, filter.limit);
     return { images: finalImages, totalCount };
   } else {
-    // No search term: We can use the much faster indexed sorting and pagination.
-    const totalCount = await baseQuery.count();
-    const finalImages = await baseQuery
-      .orderBy('createdAt')
-      .reverse()
-      .offset(filter?.offset ?? 0)
-      .limit(filter?.limit ?? 50) // Use a sensible default
-      .toArray();
+    // No search term, but filtering makes it impossible to use orderBy.
+    // So, we fetch all, then sort and paginate in memory.
+    const allMatchingImages = await baseQuery.toArray();
+    const totalCount = allMatchingImages.length;
+
+    const finalImages = sortAndPaginateArray(allMatchingImages, filter.offset, filter.limit);
 
     return { images: finalImages, totalCount };
   }
@@ -774,8 +772,3 @@ export const bulkAddImagesToCollections = async (imageIds: number[], targetColle
     }
   });
 };
-
-
-    
-
-    
