@@ -100,11 +100,18 @@ export const getImages = async (filter?: {
 }): Promise<{ images: ImageMetadata[], totalCount: number }> => {
   
   if (filter?.reviewDuplicates) {
-    const potentialDuplicatesFlagged = await db.images.where('isPotentialDuplicate').equals(true).toArray();
+    // Robust logic to avoid failing indexed query.
+    // Fetch all metadata (fast due to out-of-line blobs), then filter in-memory.
+    const allImages = await db.images.toArray();
+    
+    // Find all images flagged as potential duplicates.
+    const potentialDuplicatesFlagged = allImages.filter(img => img.isPotentialDuplicate === true);
+
     if (potentialDuplicatesFlagged.length === 0) {
         return { images: [], totalCount: 0 };
     }
 
+    // Get the unique names of the duplicate files.
     const duplicateNames = Array.from(new Set(
         potentialDuplicatesFlagged
             .map(img => img.name)
@@ -115,21 +122,24 @@ export const getImages = async (filter?: {
         return { images: [], totalCount: 0 };
     }
     
-    const query = db.images.where('name').anyOf(duplicateNames);
-    const totalCount = await query.count();
-    const imagesToSort = await query.toArray();
+    // Now, find all images (originals and duplicates) that have these names.
+    const imagesToShow = allImages.filter(img => img.name && duplicateNames.includes(img.name));
+    
+    const totalCount = imagesToShow.length;
 
-    imagesToSort.sort((a, b) => {
+    // Sort the results to group duplicates together.
+    imagesToShow.sort((a, b) => {
         const nameA = a.name.toLowerCase();
         const nameB = b.name.toLowerCase();
         if (nameA < nameB) return -1;
         if (nameA > nameB) return 1;
-        return (a.id || 0) - (b.id || 0);
+        return (a.id || 0) - (b.id || 0); // Sort by ID as a tie-breaker
     });
 
+    // Apply pagination to the final sorted list.
     const effectiveOffset = filter?.offset ?? 0;
     const end = filter?.limit !== undefined ? effectiveOffset + filter.limit : undefined;
-    const finalImages = imagesToSort.slice(effectiveOffset, end);
+    const finalImages = imagesToShow.slice(effectiveOffset, end);
     
     return { images: finalImages, totalCount };
   }
