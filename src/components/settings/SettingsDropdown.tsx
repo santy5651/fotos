@@ -11,9 +11,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Settings, Download, Upload, Trash2, Loader2, FileJson, UploadCloud } from 'lucide-react'; // Added FileJson, UploadCloud
+import { Settings, Download, Upload, Trash2, Loader2, FileJson, UploadCloud } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { exportData, importData, deleteAllData, exportDataAsSingleJson, importDataFromJson } from '@/lib/db'; // Added importDataFromJson
+import { exportData, importData, deleteAllData, exportDataAsSingleJson, importDataFromJson, getTotalImageCount } from '@/lib/db';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
@@ -22,17 +22,18 @@ import { Input } from '../ui/input';
 
 export default function SettingsDropdown() {
   const { toast } = useToast();
-  const [isImportingZip, setIsImportingZip] = useState(false); // Renamed for clarity
-  const [isImportingJson, setIsImportingJson] = useState(false); // New state for JSON import
+  const [isImportingZip, setIsImportingZip] = useState(false);
+  const [isImportingJson, setIsImportingJson] = useState(false);
   const [isExportingZip, setIsExportingZip] = useState(false);
   const [isExportingJson, setIsExportingJson] = useState(false);
-  const zipFileInputRef = useRef<HTMLInputElement>(null); // For ZIP
-  const jsonFileInputRef = useRef<HTMLInputElement>(null); // For JSON
+  const zipFileInputRef = useRef<HTMLInputElement>(null);
+  const jsonFileInputRef = useRef<HTMLInputElement>(null);
 
   const handleExportZip = async () => {
     setIsExportingZip(true);
     try {
       const { metadataJson, imageFiles } = await exportData();
+      const totalImages = await getTotalImageCount();
       const zip = new JSZip();
       zip.file("metadata.json", metadataJson);
       const imagesFolder = zip.folder("images");
@@ -43,7 +44,7 @@ export default function SettingsDropdown() {
       }
       const zipBlob = await zip.generateAsync({ type: "blob" });
       const formattedDate = new Date().toISOString().split('T')[0];
-      saveAs(zipBlob, `picstack_local_export_V1_${formattedDate}.zip`);
+      saveAs(zipBlob, `picstack_local_export_V1_${formattedDate}_${totalImages}images.zip`);
       toast({ title: "Export ZIP Successful", description: "Data exported as a ZIP file." });
     } catch (error) {
       toast({ variant: "destructive", title: "Export ZIP Failed", description: (error as Error).message });
@@ -55,9 +56,10 @@ export default function SettingsDropdown() {
     setIsExportingJson(true);
     try {
       const singleJsonString = await exportDataAsSingleJson();
+      const totalImages = await getTotalImageCount();
       const blob = new Blob([singleJsonString], { type: "application/json;charset=utf-8" });
       const formattedDate = new Date().toISOString().split('T')[0];
-      saveAs(blob, `picstack_data_V1_${formattedDate}.json`);
+      saveAs(blob, `picstack_data_V1_${formattedDate}_${totalImages}images.json`);
       toast({ title: "Export JSON Successful", description: "Data exported as a single JSON file." });
     } catch (error) {
       toast({ variant: "destructive", title: "Export JSON Failed", description: (error as Error).message });
@@ -267,4 +269,3 @@ export default function SettingsDropdown() {
   );
 }
 
-    
