@@ -161,7 +161,7 @@ export default function CollectionsPanel({
 
         // Using Promise.all to run count queries in parallel for efficiency
         const countsPromises = allCollections.map(async (coll) => {
-            if (coll.id !== undefined) {
+            if (coll.id !== undefined && coll.id !== null) {
                 const count = await db.images
                     .where('collectionIds')
                     .equals(coll.id)
