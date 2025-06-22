@@ -168,7 +168,6 @@ export default function CollectionsPanel({
         const count = await db.images
           .where('collectionIds')
           .equals(coll.id!) // Using non-null assertion because we filtered.
-          .and(img => !img.isPotentialDuplicate)
           .count();
         return { id: coll.id!, count };
       });
@@ -626,4 +625,5 @@ function CollectionItemView({
     
 
     
+
 
