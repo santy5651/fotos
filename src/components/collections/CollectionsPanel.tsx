@@ -158,23 +158,29 @@ export default function CollectionsPanel({
     async () => {
         const countsMap = new Map<number, number>();
         const allCollections = await getCollections();
-        const allImages = await db.images.toArray();
 
-        const countImagesDirectlyInCollection = (collectionId: number): number => {
-            let count = 0;
-            allImages.forEach(image => {
-                if (!image.isPotentialDuplicate && image.collectionIds && image.collectionIds.includes(collectionId)) {
-                    count++;
-                }
-            });
-            return count;
-        };
-
-        for (const coll of allCollections) {
-            if (coll.id) {
-                countsMap.set(coll.id, countImagesDirectlyInCollection(coll.id));
+        // Using Promise.all to run count queries in parallel for efficiency
+        const countsPromises = allCollections.map(async (coll) => {
+            if (coll.id !== undefined) {
+                const count = await db.images
+                    .where('collectionIds')
+                    .equals(coll.id)
+                    // We also need to filter out potential duplicates from the count
+                    .and(img => !img.isPotentialDuplicate) 
+                    .count();
+                return { id: coll.id, count };
             }
-        }
+            return null; // For collections without an ID, though this shouldn't happen for stored collections
+        });
+
+        const results = await Promise.all(countsPromises);
+
+        results.forEach(result => {
+            if (result) {
+                countsMap.set(result.id, result.count);
+            }
+        });
+
         return countsMap;
     },
     [refreshKey],
@@ -616,5 +622,7 @@ function CollectionItemView({
     </SidebarGroup>
   );
 }
+
+    
 
     
