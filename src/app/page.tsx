@@ -209,10 +209,12 @@ export default function HomePage() {
       } catch (error) {
         errorCount++;
         console.error(`Error generando descripción para imagen ID ${imageId}:`, error);
+        const errorMessage = (error as Error).message;
+        const isRateLimitError = errorMessage.includes('429') || errorMessage.toLowerCase().includes('quota');
         toast({
           variant: "destructive",
           title: "Fallo al Generar Descripción",
-          description: `No se pudo generar descripción para la imagen ID ${imageId}. ${ (error as Error).message.includes('429') ? 'Límite de API alcanzado.' : (error as Error).message }`
+          description: `No se pudo generar descripción para la imagen ID ${imageId}. ${ isRateLimitError ? 'Límite de API alcanzado. Intenta más tarde.' : errorMessage }`
         });
       }
       // Update toast with new progress

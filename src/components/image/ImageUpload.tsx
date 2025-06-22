@@ -67,7 +67,12 @@ export default function ImageUpload({ onUploadComplete }: ImageUploadProps) {
           taggingFailedCount++;
           console.error("AI tagging error for " + file.name + ":", aiError);
           const errorMessage = (aiError as Error).message;
-          toast({ variant: "destructive", title: "Fallo en Etiquetado IA", description: `No se pudieron generar etiquetas para ${file.name}. ${errorMessage.includes('429') ? 'Límite de API alcanzado.' : ''}` });
+          const isRateLimitError = errorMessage.includes('429') || errorMessage.toLowerCase().includes('quota');
+          toast({ 
+            variant: "destructive", 
+            title: "Fallo en Etiquetado IA", 
+            description: `No se pudieron generar etiquetas para ${file.name}. ${isRateLimitError ? 'Límite de API alcanzado.' : errorMessage}` 
+          });
         }
 
         // 4. AI Description
@@ -81,7 +86,12 @@ export default function ImageUpload({ onUploadComplete }: ImageUploadProps) {
           descriptionFailedCount++;
           console.error("AI description error for " + file.name + ":", aiError);
           const errorMessage = (aiError as Error).message;
-          toast({ variant: "destructive", title: "Fallo en Descripción IA", description: `No se pudo generar descripción para ${file.name}. ${errorMessage.includes('429') ? 'Límite de API alcanzado.' : ''}` });
+          const isRateLimitError = errorMessage.includes('429') || errorMessage.toLowerCase().includes('quota');
+          toast({ 
+            variant: "destructive", 
+            title: "Fallo en Descripción IA", 
+            description: `No se pudo generar descripción para ${file.name}. ${isRateLimitError ? 'Límite de API alcanzado.' : errorMessage}` 
+          });
         }
         
 
@@ -179,5 +189,3 @@ export default function ImageUpload({ onUploadComplete }: ImageUploadProps) {
     </div>
   );
 }
-
-    
