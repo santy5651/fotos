@@ -102,24 +102,34 @@ export const getImages = async (filter?: {
   if (filter?.reviewDuplicates) {
     const potentialDuplicatesFlagged = await db.images.where('isPotentialDuplicate').equals(true).toArray();
     if (potentialDuplicatesFlagged.length === 0) {
-      return { images: [], totalCount: 0 };
+        return { images: [], totalCount: 0 };
     }
-    const duplicateNames = new Set(potentialDuplicatesFlagged.map(img => img.name.toLowerCase()));
-    const preliminaryImagesArray = await db.images.filter(img => duplicateNames.has(img.name.toLowerCase())).toArray();
+
+    const duplicateNames = Array.from(new Set(
+        potentialDuplicatesFlagged
+            .map(img => img.name)
+            .filter((name): name is string => typeof name === 'string' && name.trim() !== '')
+    ));
+
+    if (duplicateNames.length === 0) {
+        return { images: [], totalCount: 0 };
+    }
     
-    const totalCount = preliminaryImagesArray.length;
-    preliminaryImagesArray.sort((a, b) => {
+    const query = db.images.where('name').anyOf(duplicateNames);
+    const totalCount = await query.count();
+    const imagesToSort = await query.toArray();
+
+    imagesToSort.sort((a, b) => {
         const nameA = a.name.toLowerCase();
         const nameB = b.name.toLowerCase();
         if (nameA < nameB) return -1;
         if (nameA > nameB) return 1;
-        if ((a.id ?? 0) < (b.id ?? 0)) return -1;
-        if ((a.id ?? 0) > (b.id ?? 0)) return 1;
-        return 0;
+        return (a.id || 0) - (b.id || 0);
     });
+
     const effectiveOffset = filter?.offset ?? 0;
     const end = filter?.limit !== undefined ? effectiveOffset + filter.limit : undefined;
-    const finalImages = preliminaryImagesArray.slice(effectiveOffset, end);
+    const finalImages = imagesToSort.slice(effectiveOffset, end);
     
     return { images: finalImages, totalCount };
   }
