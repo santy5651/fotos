@@ -158,25 +158,24 @@ export default function CollectionsPanel({
     async () => {
       const countsMap = new Map<number, number>();
       const allCollections = await getCollections();
-  
-      // Filter collections to ensure they have a valid, numeric ID before querying.
-      // This is a defensive measure against any malformed data that might exist.
-      const validCollections = allCollections.filter(coll => typeof coll.id === 'number');
-  
-      const countsPromises = validCollections.map(async (coll) => {
-        // At this point, we are guaranteed that coll.id is a number.
-        const count = await db.images
-          .where('collectionIds')
-          .equals(coll.id!) // Using non-null assertion because we filtered.
-          .count();
-        return { id: coll.id!, count };
+      
+      // Initialize map with all collection IDs to 0
+      allCollections.forEach(coll => {
+        if(coll.id !== undefined) {
+            countsMap.set(coll.id, 0);
+        }
       });
-  
-      const results = await Promise.all(countsPromises);
-  
-      results.forEach(result => {
-        if (result) {
-          countsMap.set(result.id, result.count);
+
+      // Get all images (metadata only) and build counts
+      // This is more robust than querying per collection
+      const allImages = await db.images.toArray();
+      allImages.forEach(image => {
+        if (image.collectionIds && image.collectionIds.length > 0) {
+          image.collectionIds.forEach(collectionId => {
+            if (countsMap.has(collectionId)) {
+              countsMap.set(collectionId, countsMap.get(collectionId)! + 1);
+            }
+          });
         }
       });
   
@@ -627,3 +626,6 @@ function CollectionItemView({
     
 
 
+
+
+    
