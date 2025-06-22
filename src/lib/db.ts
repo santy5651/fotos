@@ -254,17 +254,13 @@ export const getCollections = async (): Promise<Collection[]> => {
 };
 
 export const getHierarchicalCollections = async (): Promise<Collection[]> => {
-  const allCollections = await db.collections.toArray();
-  // Filter for valid names first to prevent errors with corrupt data
-  const validCollections = allCollections
-    .filter(c => typeof c.name === 'string' && c.name.trim() !== '')
-    .sort((a, b) => a.name.localeCompare(b.name));
-
+  const allCollections = await getCollections(); // Use the safe version
+  
   const collectionsMap = new Map<number, Collection>();
   const rootCollections: Collection[] = [];
 
   // First, populate the map and initialize children array, only for collections with a valid ID.
-  validCollections.forEach(collection => {
+  allCollections.forEach(collection => {
     if (collection.id !== undefined) {
       collection.children = [];
       collectionsMap.set(collection.id, collection);
@@ -734,7 +730,7 @@ export const getImagesPerCollection = async (): Promise<{ name: string, count: n
   const counts = await Promise.all(
     collections.map(async (collection) => {
       if (collection.id === undefined) return { name: collection.name, count: 0 };
-      const count = await db.images.filter(img => !img.isPotentialDuplicate && img.collectionIds.includes(collection.id!)).count();
+      const count = await db.images.where('collectionIds').equals(collection.id).and(img => !img.isPotentialDuplicate).count();
       return { name: collection.name, count };
     })
   );
@@ -790,4 +786,47 @@ export const bulkAddImagesToCollections = async (imageIds: number[], targetColle
       }
     }
   });
+};
+
+const escapeCsvField = (field: any): string => {
+  if (field === null || field === undefined) {
+    return '';
+  }
+  let str = String(field);
+  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+    str = str.replace(/"/g, '""');
+    return `"${str}"`;
+  }
+  return str;
+};
+
+export const exportDataAsCsv = async (): Promise<string> => {
+  const images = await db.images.filter(img => !img.isPotentialDuplicate).toArray();
+
+  const headers = [
+    'ID',
+    'Name',
+    'Date Created',
+    'Dimensions (WxH)',
+    'Is Favorite',
+    'Is Protected',
+    'Tags',
+    'Description'
+  ];
+
+  const rows = images.map(img => {
+    const row = [
+      img.id,
+      img.name,
+      img.createdAt.toISOString(),
+      `${img.width}x${img.height}`,
+      img.isFavorite,
+      img.isProtected,
+      (img.tags || []).join('; '), // Use semicolon to avoid issues with comma in tags
+      img.description,
+    ];
+    return row.map(escapeCsvField).join(',');
+  });
+
+  return [headers.join(','), ...rows].join('\n');
 };

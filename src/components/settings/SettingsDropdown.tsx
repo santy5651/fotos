@@ -11,9 +11,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Settings, Download, Upload, Trash2, Loader2, FileJson, UploadCloud } from 'lucide-react';
+import { Settings, Download, Upload, Trash2, Loader2, FileJson, UploadCloud, FileSpreadsheet } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { exportData, importData, deleteAllData, exportDataAsSingleJson, importDataFromJson, getTotalImageCount } from '@/lib/db';
+import { exportData, importData, deleteAllData, exportDataAsSingleJson, importDataFromJson, getTotalImageCount, exportDataAsCsv } from '@/lib/db';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
@@ -26,6 +26,7 @@ export default function SettingsDropdown() {
   const [isImportingJson, setIsImportingJson] = useState(false);
   const [isExportingZip, setIsExportingZip] = useState(false);
   const [isExportingJson, setIsExportingJson] = useState(false);
+  const [isExportingCsv, setIsExportingCsv] = useState(false);
   const zipFileInputRef = useRef<HTMLInputElement>(null);
   const jsonFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -65,6 +66,22 @@ export default function SettingsDropdown() {
       toast({ variant: "destructive", title: "Export JSON Failed", description: (error as Error).message });
     }
     setIsExportingJson(false);
+  };
+
+  const handleExportCsv = async () => {
+    setIsExportingCsv(true);
+    try {
+      const csvData = await exportDataAsCsv();
+      const totalImages = await getTotalImageCount();
+      // Add BOM for Excel compatibility with UTF-8
+      const blob = new Blob([`\uFEFF${csvData}`], { type: 'text/csv;charset=utf-8;' });
+      const formattedDate = new Date().toISOString().split('T')[0];
+      saveAs(blob, `picstack_metadata_V1_${formattedDate}_${totalImages}images.csv`);
+      toast({ title: "Exportación a CSV Exitosa", description: "Los metadatos se han exportado a un archivo CSV." });
+    } catch (error) {
+      toast({ variant: "destructive", title: "Fallo en Exportación a CSV", description: (error as Error).message });
+    }
+    setIsExportingCsv(false);
   };
 
 
@@ -189,7 +206,7 @@ export default function SettingsDropdown() {
     }
   };
 
-  const anyOperationInProgress = isImportingZip || isImportingJson || isExportingZip || isExportingJson;
+  const anyOperationInProgress = isImportingZip || isImportingJson || isExportingZip || isExportingJson || isExportingCsv;
 
   return (
     <>
@@ -227,6 +244,10 @@ export default function SettingsDropdown() {
           <DropdownMenuItem onClick={handleExportSingleJsonFile} disabled={anyOperationInProgress}>
             {isExportingJson ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileJson className="mr-2 h-4 w-4" />}
             Export Data (JSON)
+          </DropdownMenuItem>
+           <DropdownMenuItem onClick={handleExportCsv} disabled={anyOperationInProgress}>
+            {isExportingCsv ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileSpreadsheet className="mr-2 h-4 w-4" />}
+            Exportar a CSV
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={handleTriggerZipImport} disabled={anyOperationInProgress}>
             {isImportingZip ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
