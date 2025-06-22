@@ -156,32 +156,32 @@ export default function CollectionsPanel({
 
   const imageCountsResult = useLiveQuery(
     async () => {
-        const countsMap = new Map<number, number>();
-        const allCollections = await getCollections();
-
-        // Using Promise.all to run count queries in parallel for efficiency
-        const countsPromises = allCollections.map(async (coll) => {
-            if (coll.id !== undefined && coll.id !== null) {
-                const count = await db.images
-                    .where('collectionIds')
-                    .equals(coll.id)
-                    // We also need to filter out potential duplicates from the count
-                    .and(img => !img.isPotentialDuplicate) 
-                    .count();
-                return { id: coll.id, count };
-            }
-            return null; // For collections without an ID, though this shouldn't happen for stored collections
-        });
-
-        const results = await Promise.all(countsPromises);
-
-        results.forEach(result => {
-            if (result) {
-                countsMap.set(result.id, result.count);
-            }
-        });
-
-        return countsMap;
+      const countsMap = new Map<number, number>();
+      const allCollections = await getCollections();
+  
+      // Filter collections to ensure they have a valid, numeric ID before querying.
+      // This is a defensive measure against any malformed data that might exist.
+      const validCollections = allCollections.filter(coll => typeof coll.id === 'number');
+  
+      const countsPromises = validCollections.map(async (coll) => {
+        // At this point, we are guaranteed that coll.id is a number.
+        const count = await db.images
+          .where('collectionIds')
+          .equals(coll.id!) // Using non-null assertion because we filtered.
+          .and(img => !img.isPotentialDuplicate)
+          .count();
+        return { id: coll.id!, count };
+      });
+  
+      const results = await Promise.all(countsPromises);
+  
+      results.forEach(result => {
+        if (result) {
+          countsMap.set(result.id, result.count);
+        }
+      });
+  
+      return countsMap;
     },
     [refreshKey],
     new Map<number, number>()
@@ -626,3 +626,4 @@ function CollectionItemView({
     
 
     
+
