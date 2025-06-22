@@ -226,16 +226,25 @@ export const addCollection = async (collection: Omit<Collection, 'id' | 'created
 };
 
 export const getCollections = async (): Promise<Collection[]> => {
-  return db.collections.orderBy('name').toArray();
+  const allCollections = await db.collections.toArray();
+  // Filter for valid names and then sort in JS to avoid indexedDB errors with corrupt data
+  return allCollections
+    .filter(c => typeof c.name === 'string' && c.name.trim() !== '')
+    .sort((a, b) => a.name.localeCompare(b.name));
 };
 
 export const getHierarchicalCollections = async (): Promise<Collection[]> => {
-  const allCollections = await db.collections.orderBy('name').toArray();
+  const allCollections = await db.collections.toArray();
+  // Filter for valid names first to prevent errors with corrupt data
+  const validCollections = allCollections
+    .filter(c => typeof c.name === 'string' && c.name.trim() !== '')
+    .sort((a, b) => a.name.localeCompare(b.name));
+
   const collectionsMap = new Map<number, Collection>();
   const rootCollections: Collection[] = [];
 
   // First, populate the map and initialize children array, only for collections with a valid ID.
-  allCollections.forEach(collection => {
+  validCollections.forEach(collection => {
     if (collection.id !== undefined) {
       collection.children = [];
       collectionsMap.set(collection.id, collection);
