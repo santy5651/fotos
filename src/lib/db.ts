@@ -234,19 +234,26 @@ export const getHierarchicalCollections = async (): Promise<Collection[]> => {
   const collectionsMap = new Map<number, Collection>();
   const rootCollections: Collection[] = [];
 
+  // First, populate the map and initialize children array, only for collections with a valid ID.
   allCollections.forEach(collection => {
-    collection.children = [];
-    collectionsMap.set(collection.id!, collection);
+    if (collection.id !== undefined) {
+      collection.children = [];
+      collectionsMap.set(collection.id, collection);
+    }
   });
 
-  allCollections.forEach(collection => {
+  // Now, build the hierarchy.
+  collectionsMap.forEach(collection => {
     if (collection.parentId && collectionsMap.has(collection.parentId)) {
+      // It's a child, add it to its parent.
       const parentCollection = collectionsMap.get(collection.parentId)!;
       parentCollection.children!.push(collection);
     } else {
+      // It's a root collection.
       rootCollections.push(collection);
     }
   });
+
   return rootCollections;
 };
 
