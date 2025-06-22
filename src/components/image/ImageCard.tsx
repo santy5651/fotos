@@ -32,7 +32,11 @@ interface ImageCardProps {
 export default function ImageCard({ image, onUpdate, isSelected, onToggleSelection }: ImageCardProps) {
   const { toast } = useToast();
   const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [currentRotation, setCurrentRotation] = useState(image.transform?.rotate || 0);
+  
+  // The 'image' prop is the lightweight version without the 'file' blob.
+  // We use useLiveQuery to get the full object reactively, which will include the blob.
+  const fullImage = useLiveQuery(() => image.id ? db.images.get(image.id) : Promise.resolve(undefined), [image.id]);
+
   const [isAddToCollectionDialogOpen, setIsAddToCollectionDialogOpen] = useState(false);
   const [isZoomModalOpen, setIsZoomModalOpen] = useState(false);
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
@@ -40,27 +44,38 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
   const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
   const [isImageDetailsModalOpen, setIsImageDetailsModalOpen] = useState(false);
 
+  // Use the fullImage for display data if available, otherwise fall back to the initial lightweight prop.
+  const displayImage = fullImage || image;
+  const currentRotation = displayImage.transform?.rotate || 0;
 
   useEffect(() => {
-    if (image.file) {
-      const url = URL.createObjectURL(image.file);
-      setImageUrl(url);
-      return () => URL.revokeObjectURL(url);
+    let objectUrl: string | null = null;
+    if (fullImage?.file) {
+      objectUrl = URL.createObjectURL(fullImage.file);
+      setImageUrl(objectUrl);
     }
-  }, [image.file]);
+    // Cleanup function to revoke the object URL
+    return () => {
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [fullImage?.file]);
+
 
   const imageCollections = useLiveQuery(async () => {
-    if (image.collectionIds && image.collectionIds.length > 0) {
-      return db.collections.where('id').anyOf(image.collectionIds).toArray();
+    if (displayImage.collectionIds && displayImage.collectionIds.length > 0) {
+      return db.collections.where('id').anyOf(displayImage.collectionIds).toArray();
     }
     return [];
-  }, [image.id, image.collectionIds], []);
+  }, [displayImage.id, displayImage.collectionIds], []);
 
 
   const handleFavoriteToggle = async () => {
+    if (!displayImage.id) return;
     try {
-      await updateImage(image.id!, { isFavorite: !image.isFavorite });
-      toast({ title: image.isFavorite ? "Unfavorited" : "Favorited", description: `${image.name} status updated.` });
+      await updateImage(displayImage.id, { isFavorite: !displayImage.isFavorite });
+      toast({ title: displayImage.isFavorite ? "Unfavorited" : "Favorited", description: `${displayImage.name} status updated.` });
       onUpdate();
     } catch (error) {
       toast({ variant: "destructive", title: "Error", description: "Failed to update favorite status." });
@@ -68,9 +83,10 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
   };
 
   const handleProtectToggle = async () => {
+    if (!displayImage.id) return;
     try {
-      await updateImage(image.id!, { isProtected: !image.isProtected });
-      toast({ title: image.isProtected ? "Unprotected" : "Protected", description: `${image.name} status updated.` });
+      await updateImage(displayImage.id, { isProtected: !displayImage.isProtected });
+      toast({ title: displayImage.isProtected ? "Unprotected" : "Protected", description: `${displayImage.name} status updated.` });
       onUpdate();
     } catch (error) {
       toast({ variant: "destructive", title: "Error", description: "Failed to update protection status." });
@@ -78,13 +94,14 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
   };
 
   const handleDelete = async () => {
-    if (image.isProtected && !image.isPotentialDuplicate) {
+    if (displayImage.isProtected && !displayImage.isPotentialDuplicate) {
       toast({ variant: "destructive", title: "Cannot Delete", description: "This image is protected." });
       return;
     }
+    if (!displayImage.id) return;
     try {
-      await deleteImage(image.id!);
-      toast({ title: "Deleted", description: `${image.name} has been deleted.` });
+      await deleteImage(displayImage.id);
+      toast({ title: "Deleted", description: `${displayImage.name} has been deleted.` });
       onUpdate();
     } catch (error) {
       toast({ variant: "destructive", title: "Error", description: (error as Error).message || "Failed to delete image." });
@@ -92,10 +109,10 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
   };
 
   const handleRotate = async (direction: 'cw' | 'ccw') => {
+    if (!displayImage.id) return;
     const newRotation = direction === 'cw' ? (currentRotation + 90) % 360 : (currentRotation - 90 + 360) % 360;
-    setCurrentRotation(newRotation);
     try {
-      await updateImage(image.id!, { transform: { ...image.transform, rotate: newRotation } });
+      await updateImage(displayImage.id, { transform: { ...displayImage.transform, rotate: newRotation } });
       onUpdate();
     } catch (error) {
       toast({ variant: "destructive", title: "Error", description: "Failed to save rotation."});
@@ -104,7 +121,7 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
 
   const handleCollectionsUpdated = () => {
     onUpdate();
-    toast({ title: "Collections Updated", description: `Image "${image.name}" has been updated.` });
+    toast({ title: "Collections Updated", description: `Image "${displayImage.name}" has been updated.` });
   }
 
   const handleRenameSuccess = () => {
@@ -113,16 +130,16 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
   }
 
   const handleRegenerateTags = async () => {
-    if (!image.id || !image.file) {
-      toast({ variant: "destructive", title: "Error", description: "Información de imagen faltante para regenerar etiquetas." });
+    if (!fullImage?.id || !fullImage?.file) {
+      toast({ variant: "destructive", title: "Error", description: "El archivo de imagen completo no está cargado. Inténtelo de nuevo en un momento." });
       return;
     }
     setIsRetagging(true);
     try {
-      const dataUri = await blobToDataURL(image.file, { defaultMimeTypeIfGeneric: 'image/png' });
+      const dataUri = await blobToDataURL(fullImage.file, { defaultMimeTypeIfGeneric: 'image/png' });
       const aiResult = await tagImage({ photoDataUri: dataUri });
-      await updateImage(image.id, { tags: aiResult.tags, hasTags: aiResult.tags.length > 0 });
-      toast({ title: "Etiquetas Regeneradas", description: `Se generaron nuevas etiquetas para ${image.name}.` });
+      await updateImage(fullImage.id, { tags: aiResult.tags, hasTags: aiResult.tags.length > 0 });
+      toast({ title: "Etiquetas Regeneradas", description: `Se generaron nuevas etiquetas para ${fullImage.name}.` });
       onUpdate(); 
     } catch (error) {
       console.error("Error regenerating tags:", error);
@@ -131,7 +148,7 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
       toast({
         variant: "destructive",
         title: "Fallo al Regenerar Etiquetas",
-        description: `No se pudieron generar etiquetas para ${image.name}. ${ isRateLimitError ? 'Límite de API alcanzado. Intenta más tarde.' : errorMessage }`
+        description: `No se pudieron generar etiquetas para ${fullImage.name}. ${ isRateLimitError ? 'Límite de API alcanzado. Intenta más tarde.' : errorMessage }`
       });
     } finally {
       setIsRetagging(false);
@@ -139,26 +156,25 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
   };
 
   const handleGenerateDescription = async () => {
-    if (!image.id || !image.file) {
-      toast({ variant: "destructive", title: "Error", description: "Información de imagen faltante para generar descripción." });
+    if (!fullImage?.id || !fullImage?.file) {
+      toast({ variant: "destructive", title: "Error", description: "El archivo de imagen completo no está cargado. Inténtelo de nuevo en un momento." });
       return;
     }
     setIsGeneratingDescription(true);
     try {
-      const dataUri = await blobToDataURL(image.file, { defaultMimeTypeIfGeneric: 'image/png' });
+      const dataUri = await blobToDataURL(fullImage.file, { defaultMimeTypeIfGeneric: 'image/png' });
       const aiResult = await describeImage({ photoDataUri: dataUri });
       
       const newDescription = aiResult.description;
-      // Ensure newDescription is a string before trimming, default to empty string if null/undefined
       const descriptionToSave = typeof newDescription === 'string' ? newDescription : "";
       const newHasDescription = descriptionToSave.trim() !== "";
 
-      await updateImage(image.id, { description: descriptionToSave, hasDescription: newHasDescription });
+      await updateImage(fullImage.id, { description: descriptionToSave, hasDescription: newHasDescription });
 
       if (newHasDescription) {
-        toast({ title: "Descripción Generada", description: `Se generó una descripción para ${image.name}.` });
+        toast({ title: "Descripción Generada", description: `Se generó una descripción para ${fullImage.name}.` });
       } else {
-        toast({ title: "Descripción No Detallada", description: `La IA generó una descripción vacía o no pudo detallar ${image.name}. Intente de nuevo o con otra imagen.`, duration: 7000 });
+        toast({ title: "Descripción No Detallada", description: `La IA generó una descripción vacía o no pudo detallar ${fullImage.name}. Intente de nuevo o con otra imagen.`, duration: 7000 });
       }
       onUpdate(); 
     } catch (error) {
@@ -168,7 +184,7 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
       toast({
         variant: "destructive",
         title: "Fallo al Generar Descripción",
-        description: `No se pudo generar una descripción para ${image.name}. ${ isRateLimitError ? 'Límite de API alcanzado. Intenta más tarde.' : errorMessage }`
+        description: `No se pudo generar una descripción para ${fullImage.name}. ${ isRateLimitError ? 'Límite de API alcanzado. Intenta más tarde.' : errorMessage }`
       });
     } finally {
       setIsGeneratingDescription(false);
@@ -196,14 +212,14 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
     <>
       <Card className={cn(
         "flex flex-col justify-between shadow-lg hover:shadow-xl transition-shadow duration-300 rounded-lg overflow-hidden",
-        image.isPotentialDuplicate && "border-2 border-destructive/70 ring-2 ring-destructive/30",
+        displayImage.isPotentialDuplicate && "border-2 border-destructive/70 ring-2 ring-destructive/30",
         isSelected && "ring-2 ring-primary border-primary shadow-primary/30"
       )}>
         <CardContent className="p-0">
           <div className="aspect-[4/3] w-full overflow-hidden relative bg-muted group">
             <NextImage
               src={imageUrl}
-              alt={image.name}
+              alt={displayImage.name}
               fill
               style={{
                 objectFit: 'contain', 
@@ -234,9 +250,9 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
             </div>
 
             <div className="absolute top-2 right-2 flex gap-1 z-10">
-              {image.isFavorite && !image.isPotentialDuplicate && <Heart className="h-5 w-5 fill-red-500 text-red-500" />}
-              {image.isProtected && !image.isPotentialDuplicate && <Shield className="h-5 w-5 fill-blue-500 text-blue-500" />}
-              {image.isPotentialDuplicate && (
+              {displayImage.isFavorite && !displayImage.isPotentialDuplicate && <Heart className="h-5 w-5 fill-red-500 text-red-500" />}
+              {displayImage.isProtected && !displayImage.isPotentialDuplicate && <Shield className="h-5 w-5 fill-blue-500 text-blue-500" />}
+              {displayImage.isPotentialDuplicate && (
                 <Tooltip>
                     <TooltipTrigger>
                         <AlertTriangle className="h-5 w-5 text-destructive fill-destructive/20" />
@@ -246,11 +262,11 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
               )}
             </div>
 
-            {!image.isPotentialDuplicate && (
+            {!displayImage.isPotentialDuplicate && (
               <div className="image-actions-overlay absolute bottom-0 left-0 right-0 px-1 py-1 bg-gradient-to-t from-black/70 via-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-in-out flex justify-start items-center z-10">
                 <div className="flex gap-0.5 flex-wrap">
-                  <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={handleFavoriteToggle} className="h-[28px] w-[28px] p-1 hover:bg-white/10"><Heart className={cn('h-4 w-4', image.isFavorite ? 'fill-red-500 text-red-500' : 'text-neutral-200 hover:text-white')} /></Button></TooltipTrigger><TooltipContent><p>Favorito</p></TooltipContent></Tooltip>
-                  <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={handleProtectToggle} className="h-[28px] w-[28px] p-1 hover:bg-white/10"><Shield className={cn('h-4 w-4', image.isProtected ? 'fill-blue-500 text-blue-500' : 'text-neutral-200 hover:text-white')} /></Button></TooltipTrigger><TooltipContent><p>Proteger</p></TooltipContent></Tooltip>
+                  <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={handleFavoriteToggle} className="h-[28px] w-[28px] p-1 hover:bg-white/10"><Heart className={cn('h-4 w-4', displayImage.isFavorite ? 'fill-red-500 text-red-500' : 'text-neutral-200 hover:text-white')} /></Button></TooltipTrigger><TooltipContent><p>Favorito</p></TooltipContent></Tooltip>
+                  <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={handleProtectToggle} className="h-[28px] w-[28px] p-1 hover:bg-white/10"><Shield className={cn('h-4 w-4', displayImage.isProtected ? 'fill-blue-500 text-blue-500' : 'text-neutral-200 hover:text-white')} /></Button></TooltipTrigger><TooltipContent><p>Proteger</p></TooltipContent></Tooltip>
                   <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={() => setIsAddToCollectionDialogOpen(true)} className="h-[28px] w-[28px] p-1 hover:bg-white/10"><Tag className="h-4 w-4 text-neutral-200 hover:text-white" /></Button></TooltipTrigger><TooltipContent><p>Añadir a Colección</p></TooltipContent></Tooltip>
                   <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={() => handleRotate('ccw')} className="h-[28px] w-[28px] p-1 hover:bg-white/10"><RotateCcw className="h-4 w-4 text-neutral-200 hover:text-white" /></Button></TooltipTrigger><TooltipContent><p>Girar Izquierda</p></TooltipContent></Tooltip>
                   <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={() => handleRotate('cw')} className="h-[28px] w-[28px] p-1 hover:bg-white/10"><RotateCw className="h-4 w-4 text-neutral-200 hover:text-white" /></Button></TooltipTrigger><TooltipContent><p>Girar Derecha</p></TooltipContent></Tooltip>
@@ -262,6 +278,7 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
                         size="icon" 
                         onClick={() => setIsImageDetailsModalOpen(true)} 
                         className="h-[28px] w-[28px] p-1 hover:bg-white/10"
+                        disabled={!fullImage}
                       >
                         <FilePenLine className="h-4 w-4 text-neutral-200 hover:text-white" />
                       </Button>
@@ -275,26 +292,26 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
         </CardContent>
 
         <CardHeader className="pt-4 pb-2 px-4 space-y-1">
-          <CardTitle className="text-sm font-medium truncate" title={image.name}>{image.name}</CardTitle>
+          <CardTitle className="text-sm font-medium truncate" title={displayImage.name}>{displayImage.name}</CardTitle>
           
-          {image.isPotentialDuplicate ? (
+          {displayImage.isPotentialDuplicate ? (
             <Badge variant="destructive" className="w-fit">
               <AlertTriangle className="mr-1 h-3 w-3" />
               Potencial Duplicado
             </Badge>
-          ) : image.hasTags ? (
+          ) : displayImage.hasTags ? (
             <div>
               <div className="flex flex-wrap gap-1">
-                {image.tags.slice(0, 2).map(tag => (
+                {displayImage.tags.slice(0, 2).map(tag => (
                   <Badge key={tag} variant="secondary" className="text-xs">
                     {tag}
                   </Badge>
                 ))}
               </div>
-              {image.tags.length > 2 && (
+              {displayImage.tags.length > 2 && (
                 <div className="mt-0.5"> 
                   <Badge variant="outline" className="text-xs">
-                    +{image.tags.length - 2}
+                    +{displayImage.tags.length - 2}
                   </Badge>
                 </div>
               )}
@@ -306,7 +323,7 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
                 variant="outline" 
                 size="sm" 
                 onClick={handleRegenerateTags} 
-                disabled={isRetagging}
+                disabled={isRetagging || !fullImage}
                 className="h-7 px-2 py-1 text-xs"
               >
                 {isRetagging ? (
@@ -319,7 +336,7 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
             </div>
           )}
 
-          {image.collectionIds && image.collectionIds.length > 0 && !image.isPotentialDuplicate && (
+          {displayImage.collectionIds && displayImage.collectionIds.length > 0 && !displayImage.isPotentialDuplicate && (
             <div>
               {imageCollections === undefined && (
                 <div className="flex items-center text-xs text-muted-foreground">
@@ -342,10 +359,10 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
             </div>
           )}
 
-          {!image.isPotentialDuplicate && (
-            image.hasDescription ? (
-              <p className="text-xs text-muted-foreground pt-1 leading-snug max-h-10 overflow-hidden text-ellipsis" title={image.description}>
-                {image.description}
+          {!displayImage.isPotentialDuplicate && (
+            displayImage.hasDescription ? (
+              <p className="text-xs text-muted-foreground pt-1 leading-snug max-h-10 overflow-hidden text-ellipsis" title={displayImage.description}>
+                {displayImage.description}
               </p>
             ) : (
               <div className="pt-1 flex items-center">
@@ -354,7 +371,7 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
                   variant="outline" 
                   size="sm" 
                   onClick={handleGenerateDescription} 
-                  disabled={isGeneratingDescription}
+                  disabled={isGeneratingDescription || !fullImage}
                   className="h-7 px-2 py-1 text-xs"
                 >
                   {isGeneratingDescription ? (
@@ -371,9 +388,9 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
 
         <CardFooter className="flex justify-between items-center px-4 pb-3 pt-2">
           <div className="text-xs text-muted-foreground truncate">
-            {new Date(image.createdAt).toLocaleDateString()} - {image.width}x{image.height} (ID: {image.id})
+            {new Date(displayImage.createdAt).toLocaleDateString()} - {displayImage.width}x{displayImage.height} (ID: {displayImage.id})
           </div>
-          {image.isPotentialDuplicate ? (
+          {displayImage.isPotentialDuplicate ? (
             <div className="flex gap-1">
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -391,7 +408,7 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader><AlertDialogTitle>¿Eliminar esta Imagen?</AlertDialogTitle></AlertDialogHeader>
-                  <AlertDialogDescription>¿Estás seguro que quieres eliminar esta copia de "{image.name}"? Esta acción no se puede deshacer.</AlertDialogDescription>
+                  <AlertDialogDescription>¿Estás seguro que quieres eliminar esta copia de "{displayImage.name}"? Esta acción no se puede deshacer.</AlertDialogDescription>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Cancelar</AlertDialogCancel>
                     <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">Eliminar esta Copia</AlertDialogAction>
@@ -402,13 +419,13 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
           ) : (
              <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" disabled={image.isProtected} aria-label="Delete image">
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" disabled={displayImage.isProtected} aria-label="Delete image">
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader><AlertDialogTitle>¿Estás seguro?</AlertDialogTitle></AlertDialogHeader>
-                <AlertDialogDescription>Esta acción no se puede deshacer. Esto eliminará permanentemente "{image.name}".</AlertDialogDescription>
+                <AlertDialogDescription>Esta acción no se puede deshacer. Esto eliminará permanentemente "{displayImage.name}".</AlertDialogDescription>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancelar</AlertDialogCancel>
                   <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">Eliminar</AlertDialogAction>
@@ -420,7 +437,7 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
       </Card>
       {isAddToCollectionDialogOpen && (
         <AddToCollectionDialog
-          image={image}
+          image={displayImage}
           isOpen={isAddToCollectionDialogOpen}
           onClose={() => setIsAddToCollectionDialogOpen(false)}
           onUpdateCollections={handleCollectionsUpdated}
@@ -431,23 +448,23 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
           isOpen={isZoomModalOpen}
           onClose={() => setIsZoomModalOpen(false)}
           imageUrl={imageUrl}
-          imageName={image.name}
+          imageName={displayImage.name}
           rotation={currentRotation}
-          imageNaturalWidth={image.width}
-          imageNaturalHeight={image.height}
+          imageNaturalWidth={displayImage.width}
+          imageNaturalHeight={displayImage.height}
         />
       )}
-      {isRenameDialogOpen && imageUrl && (
+      {isRenameDialogOpen && (
         <RenameImageDialog
-          image={image}
+          image={displayImage}
           isOpen={isRenameDialogOpen}
           onClose={() => setIsRenameDialogOpen(false)}
           onRenameSuccess={handleRenameSuccess}
         />
       )}
-      {isImageDetailsModalOpen && imageUrl && (
+      {isImageDetailsModalOpen && fullImage && (
         <ImageDetailsModal
-          image={image}
+          image={fullImage}
           isOpen={isImageDetailsModalOpen}
           onClose={() => setIsImageDetailsModalOpen(false)}
           onUpdate={onUpdate}

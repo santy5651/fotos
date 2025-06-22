@@ -8,11 +8,14 @@ export class PicStackDexie extends Dexie {
 
   constructor() {
     super('PicStackDB');
+    this.version(7).stores({
+      images: '++id, &file, name, *tags, createdAt, isFavorite, isProtected, *collectionIds, mimeType, isPotentialDuplicate, hasTags, hasDescription',
+      collections: '++id, name, parentId, createdAt',
+    });
     this.version(6).stores({
       images: '++id, name, *tags, createdAt, isFavorite, isProtected, *collectionIds, mimeType, isPotentialDuplicate, hasTags, hasDescription',
       collections: '++id, name, parentId, createdAt',
     });
-    // Keeping older versions for upgrade paths if users have them
     this.version(5).stores({
       images: '++id, name, *tags, createdAt, isFavorite, isProtected, *collectionIds, mimeType, isPotentialDuplicate, hasTags, hasDescription',
       collections: '++id, name, parentId, createdAt',
@@ -96,9 +99,8 @@ export const getImages = async (filter?: {
   limit?: number;
 }): Promise<{ images: ImageMetadata[], totalCount: number }> => {
   
-  // Handle special 'reviewDuplicates' mode first, as it's very different.
   if (filter?.reviewDuplicates) {
-    const potentialDuplicatesFlagged = await db.images.filter(img => img.isPotentialDuplicate === true).toArray();
+    const potentialDuplicatesFlagged = await db.images.where('isPotentialDuplicate').equals(true).toArray();
     if (potentialDuplicatesFlagged.length === 0) {
       return { images: [], totalCount: 0 };
     }
@@ -106,7 +108,6 @@ export const getImages = async (filter?: {
     const preliminaryImagesArray = await db.images.filter(img => duplicateNames.has(img.name.toLowerCase())).toArray();
     
     const totalCount = preliminaryImagesArray.length;
-    // Sort by name then ID to group them
     preliminaryImagesArray.sort((a, b) => {
         const nameA = a.name.toLowerCase();
         const nameB = b.name.toLowerCase();
@@ -123,12 +124,10 @@ export const getImages = async (filter?: {
     return { images: finalImages, totalCount };
   }
 
-  // Handle search term logic separately as it requires JS-based filtering across multiple fields
   const searchTerm = filter?.searchTerm?.trim().toLowerCase();
   if (searchTerm) {
       const allCollections = await getCollections();
-      // This path has to be slower as it's a complex text search that cannot use indexes efficiently.
-      let baseImages = await db.images.filter(img => !img.isPotentialDuplicate).toArray();
+      let baseImages = await db.images.where('isPotentialDuplicate').equals(false).toArray();
       
       const searchedImages = baseImages.filter(img => {
           if (img.name.toLowerCase().includes(searchTerm)) return true;
@@ -152,7 +151,6 @@ export const getImages = async (filter?: {
       });
 
       const totalCount = searchedImages.length;
-      // Sort and paginate the results in JS
       searchedImages.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       const effectiveOffset = filter?.offset ?? 0;
       const end = filter?.limit !== undefined ? effectiveOffset + filter.limit : undefined;
@@ -160,15 +158,10 @@ export const getImages = async (filter?: {
       return { images: finalImages, totalCount };
   }
   
-  // --- Fast, paginated path for all other views (no search term) ---
-  
-  // Start with a sorted collection. This is key for performance.
-  // Dexie can efficiently apply .filter() on an already sorted collection.
   let query = db.images.orderBy('createdAt').reverse();
 
   let filteredQuery: Dexie.Collection<ImageMetadata, number>;
 
-  // Apply filters
   if (filter?.showUnassigned) {
     filteredQuery = query.filter(img => !img.isPotentialDuplicate && (!img.collectionIds || img.collectionIds.length === 0));
   } else if (filter?.showUntagged) {
@@ -177,23 +170,19 @@ export const getImages = async (filter?: {
     filteredQuery = query.filter(img => !img.isPotentialDuplicate && img.hasDescription === false);
   } else if (filter?.collectionId !== null && filter?.collectionId !== undefined) {
     const targetCollectionId = filter.collectionId;
-    // .includes() on a multi-entry index requires a .filter() function
     filteredQuery = query.filter(img => !img.isPotentialDuplicate && img.collectionIds.includes(targetCollectionId));
   } else {
-    // Default view: all non-duplicate images
     filteredQuery = query.filter(img => !img.isPotentialDuplicate);
   }
 
-  // Get total count on the filtered query
   const totalCount = await filteredQuery.count();
 
-  // Get the paginated results
-  const finalImages = await filteredQuery
+  const paginatedResult = await filteredQuery
     .offset(filter?.offset ?? 0)
-    .limit(filter?.limit ?? 50) // Use a sensible default
+    .limit(filter?.limit ?? 50)
     .toArray();
     
-  return { images: finalImages, totalCount };
+  return { images: paginatedResult, totalCount };
 };
 
 
@@ -295,7 +284,7 @@ export const exportData = async (): Promise<{ metadataJson: string, imageFiles: 
   const collections = await db.collections.toArray();
 
   const metadata = {
-    version: 6,
+    version: 7,
     collections: collections.map(c => {
       const { children, imageCount, ...serializableCollection } = c;
       return {
@@ -415,7 +404,7 @@ export const exportDataAsSingleJson = async (): Promise<string> => {
   }));
 
   const exportObject = {
-    version: 6, 
+    version: 7, 
     collections: serializableCollections,
     images: serializableImages,
   };
@@ -449,8 +438,8 @@ export const importDataFromJson = async (jsonDataString: string): Promise<string
 
   try {
     parsedData = JSON.parse(jsonDataString);
-    if (parsedData.version !== 6) {
-      warnings.push(`Import failed: Metadata version mismatch. Expected v6, got v${parsedData.version}. Try exporting new data first.`);
+    if (parsedData.version > 7) {
+      warnings.push(`Import failed: Metadata version mismatch. App supports up to v7, got v${parsedData.version}. Try exporting new data first.`);
       return warnings;
     }
   } catch (e) {
@@ -565,8 +554,8 @@ export const importData = async (metadataJson: string, files: File[]): Promise<s
   let parsedData;
   try {
     parsedData = JSON.parse(metadataJson);
-    if (parsedData.version !== 6) {
-        warnings.push(`Import failed: Metadata version mismatch. Expected v6, got v${parsedData.version}. Try exporting new data first.`);
+    if (parsedData.version > 7) {
+        warnings.push(`Import failed: Metadata version mismatch. App supports up to v7, got v${parsedData.version}. Try exporting new data first.`);
         return warnings;
     }
   } catch (e) {
@@ -679,7 +668,7 @@ export const getTotalImageCount = async (): Promise<number> => {
 };
 
 export const getPotentialDuplicatesCount = async (): Promise<number> => {
-  return db.images.filter(img => img.isPotentialDuplicate === true).count();
+  return db.images.where('isPotentialDuplicate').equals(true).count();
 };
 
 export const getUnassignedImageCount = async (): Promise<number> => {
@@ -724,7 +713,6 @@ export const blobToDataURL = (
     const reader = new FileReader();
     reader.onloadend = () => {
       let result = reader.result as string;
-      // Check and override MIME type in the data URL string if necessary
       if (options?.defaultMimeTypeIfGeneric) {
         const currentMimeType = result.substring(result.indexOf(':') + 1, result.indexOf(';'));
         if (currentMimeType === 'application/octet-stream' || !currentMimeType) {
@@ -741,7 +729,7 @@ export const blobToDataURL = (
 };
 
 export const getAllUniqueTags = async (): Promise<string[]> => {
-  const allImages = await db.images.filter(img => !img.isPotentialDuplicate).toArray();
+  const allImages = await db.images.where('isPotentialDuplicate').equals(false).toArray();
   const tagSet = new Set<string>();
   allImages.forEach(image => {
     if (image.tags && image.tags.length > 0) {

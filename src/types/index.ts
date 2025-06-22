@@ -2,7 +2,7 @@
 export interface ImageMetadata {
   id?: number; // Auto-incremented by IndexedDB
   name: string; // Original file name
-  file: File; // The actual image file/blob
+  file: File; // The actual image file/blob. May not be present in lightweight queries.
   tags: string[];
   width: number;
   height: number;
