@@ -1,13 +1,13 @@
 
 "use client";
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, getHierarchicalCollections, addCollection as dbAddCollection, getCollections, deleteCollection as dbDeleteCollection, updateCollection as dbUpdateCollection, getUnassignedImageCount, getTotalImageCount, getUntaggedImageCount, getPotentialDuplicatesCount, getUndescribedImageCount } from '@/lib/db'; // Added getUndescribedImageCount
+import { db, getHierarchicalCollections, addCollection as dbAddCollection, getCollections, deleteCollection as dbDeleteCollection, updateCollection as dbUpdateCollection } from '@/lib/db';
 import type { Collection } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, Folder, ChevronDown, ChevronRight, Edit2, Trash2, Loader2, FolderPlus, ListCollapse, AlertTriangle, Unlink, Tags, FileX } from 'lucide-react'; // Added FileX
+import { Plus, Folder, ChevronDown, ChevronRight, Edit2, Trash2, Loader2, FolderPlus, ListCollapse, AlertTriangle, Unlink, Tags, FileX } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import {
   Dialog,
@@ -47,8 +47,8 @@ interface CollectionsPanelProps {
   isShowUnassignedMode: boolean;
   onToggleShowUntagged: () => void; 
   isShowUntaggedMode: boolean; 
-  onToggleShowUndescribed: () => void; // New prop
-  isShowUndescribedMode: boolean; // New prop
+  onToggleShowUndescribed: () => void;
+  isShowUndescribedMode: boolean;
 }
 
 interface CollectionItemProps {
@@ -67,8 +67,8 @@ interface CollectionItemProps {
   onToggleShowUnassigned: () => void;
   isShowUntaggedMode: boolean; 
   onToggleShowUntagged: () => void; 
-  isShowUndescribedMode: boolean; // New prop
-  onToggleShowUndescribed: () => void; // New prop
+  isShowUndescribedMode: boolean;
+  onToggleShowUndescribed: () => void;
 }
 
 export default function CollectionsPanel({
@@ -79,8 +79,8 @@ export default function CollectionsPanel({
   isShowUnassignedMode,
   onToggleShowUntagged, 
   isShowUntaggedMode, 
-  onToggleShowUndescribed, // New prop
-  isShowUndescribedMode, // New prop
+  onToggleShowUndescribed,
+  isShowUndescribedMode,
 }: CollectionsPanelProps) {
   const { toast } = useToast();
   const [newCollectionName, setNewCollectionName] = useState('');
@@ -96,31 +96,34 @@ export default function CollectionsPanel({
     [refreshKey], [] as Collection[]
   );
 
-  const unassignedImageCount = useLiveQuery(
-    async () => getUnassignedImageCount(),
-    [refreshKey], 0
+  const allImagesMetadata = useLiveQuery(
+    () => db.images.toArray(),
+    [refreshKey],
+    null
   );
 
-  const untaggedImageCount = useLiveQuery(
-    async () => getUntaggedImageCount(),
-    [refreshKey], 0
-  );
-  
-  const undescribedImageCount = useLiveQuery( // New counter
-    async () => getUndescribedImageCount(),
-    [refreshKey], 0
-  );
+  const stats = useMemo(() => {
+    if (!allImagesMetadata) {
+      return {
+        totalImageCount: 0,
+        unassignedImageCount: 0,
+        untaggedImageCount: 0,
+        undescribedImageCount: 0,
+        potentialDuplicatesCount: 0,
+      };
+    }
 
-  const totalImageCount = useLiveQuery(
-    async () => getTotalImageCount(),
-    [refreshKey], 0
-  );
-
-  const potentialDuplicatesCount = useLiveQuery(
-    async () => getPotentialDuplicatesCount(),
-    [refreshKey], 0
-  );
-
+    const nonDuplicates = allImagesMetadata.filter(img => !img.isPotentialDuplicate);
+    const duplicates = allImagesMetadata.filter(img => img.isPotentialDuplicate);
+    
+    return {
+      totalImageCount: nonDuplicates.length,
+      unassignedImageCount: nonDuplicates.filter(img => !img.collectionIds || img.collectionIds.length === 0).length,
+      untaggedImageCount: nonDuplicates.filter(img => img.hasTags === false).length,
+      undescribedImageCount: nonDuplicates.filter(img => img.hasDescription === false).length,
+      potentialDuplicatesCount: duplicates.length,
+    };
+  }, [allImagesMetadata]);
 
   useEffect(() => {
     if (hierarchicalCollections && !initialOpenStateApplied && hierarchicalCollections.length > 0) {
@@ -151,39 +154,36 @@ export default function CollectionsPanel({
         return allCollections.sort((a,b) => a.name.localeCompare(b.name));
     },
     [refreshKey], [] as Collection[]
-);
-
-
-  const imageCountsResult = useLiveQuery(
-    async () => {
-      const countsMap = new Map<number, number>();
-      const allCollections = await getCollections();
-      
-      // Initialize map with all collection IDs to 0
-      allCollections.forEach(coll => {
-        if(coll.id !== undefined) {
-            countsMap.set(coll.id, 0);
-        }
-      });
-
-      // Get all images (metadata only) and build counts
-      // This is more robust than querying per collection
-      const allImages = await db.images.toArray();
-      allImages.forEach(image => {
-        if (image.collectionIds && image.collectionIds.length > 0) {
-          image.collectionIds.forEach(collectionId => {
-            if (countsMap.has(collectionId)) {
-              countsMap.set(collectionId, countsMap.get(collectionId)! + 1);
-            }
-          });
-        }
-      });
-  
-      return countsMap;
-    },
-    [refreshKey],
-    new Map<number, number>()
   );
+
+
+  const imageCountsResult = useMemo(() => {
+    const countsMap = new Map<number, number>();
+    if (!allImagesMetadata || !flatCollectionsForSelect) {
+      return countsMap;
+    }
+    
+    flatCollectionsForSelect.forEach(coll => {
+      if (coll.id !== undefined) {
+        countsMap.set(coll.id, 0);
+      }
+    });
+
+    const nonDuplicateImages = allImagesMetadata.filter(img => !img.isPotentialDuplicate);
+    
+    nonDuplicateImages.forEach(image => {
+      if (image.collectionIds && image.collectionIds.length > 0) {
+        image.collectionIds.forEach(collectionId => {
+          if (typeof collectionId === 'number' && countsMap.has(collectionId)) {
+            countsMap.set(collectionId, countsMap.get(collectionId)! + 1);
+          }
+        });
+      }
+    });
+
+    return countsMap;
+  }, [allImagesMetadata, flatCollectionsForSelect]);
+
 
 function CollectionItemView({
   collection,
@@ -201,8 +201,8 @@ function CollectionItemView({
   onToggleShowUnassigned,
   isShowUntaggedMode,
   onToggleShowUntagged,
-  isShowUndescribedMode, // New prop
-  onToggleShowUndescribed, // New prop
+  isShowUndescribedMode,
+  onToggleShowUndescribed,
 }: CollectionItemProps) {
   const { toast } = useToast();
   const [isRenaming, setIsRenaming] = useState(false);
@@ -248,7 +248,7 @@ function CollectionItemView({
     if (isReviewDuplicatesMode) onToggleReviewDuplicates();
     if (isShowUnassignedMode) onToggleShowUnassigned();
     if (isShowUntaggedMode) onToggleShowUntagged();
-    if (isShowUndescribedMode) onToggleShowUndescribed(); // Deactivate new mode
+    if (isShowUndescribedMode) onToggleShowUndescribed();
     onSelect(collection.id!);
   };
 
@@ -368,7 +368,7 @@ function CollectionItemView({
     if (isReviewDuplicatesMode) onToggleReviewDuplicates();
     if (isShowUnassignedMode) onToggleShowUnassigned();
     if (isShowUntaggedMode) onToggleShowUntagged();
-    if (isShowUndescribedMode) onToggleShowUndescribed(); // Deactivate new mode
+    if (isShowUndescribedMode) onToggleShowUndescribed();
     handleSelectCollectionInternal(null);
   };
 
@@ -376,7 +376,7 @@ function CollectionItemView({
     if (!isReviewDuplicatesMode) onToggleReviewDuplicates();
      if (isShowUnassignedMode) onToggleShowUnassigned(); 
      if (isShowUntaggedMode) onToggleShowUntagged();
-     if (isShowUndescribedMode) onToggleShowUndescribed(); // Deactivate new mode
+     if (isShowUndescribedMode) onToggleShowUndescribed();
      handleSelectCollectionInternal(null); 
   };
 
@@ -384,7 +384,7 @@ function CollectionItemView({
     if (!isShowUnassignedMode) onToggleShowUnassigned();
      if (isReviewDuplicatesMode) onToggleReviewDuplicates(); 
      if (isShowUntaggedMode) onToggleShowUntagged();
-     if (isShowUndescribedMode) onToggleShowUndescribed(); // Deactivate new mode
+     if (isShowUndescribedMode) onToggleShowUndescribed();
      handleSelectCollectionInternal(null);
   };
 
@@ -392,11 +392,11 @@ function CollectionItemView({
     if (!isShowUntaggedMode) onToggleShowUntagged();
      if (isReviewDuplicatesMode) onToggleReviewDuplicates(); 
      if (isShowUnassignedMode) onToggleShowUnassigned();
-     if (isShowUndescribedMode) onToggleShowUndescribed(); // Deactivate new mode
+     if (isShowUndescribedMode) onToggleShowUndescribed();
      handleSelectCollectionInternal(null);
   };
   
-  const handleSelectShowUndescribed = () => { // New handler
+  const handleSelectShowUndescribed = () => {
     if (!isShowUndescribedMode) onToggleShowUndescribed();
      if (isReviewDuplicatesMode) onToggleReviewDuplicates(); 
      if (isShowUnassignedMode) onToggleShowUnassigned();
@@ -444,15 +444,15 @@ function CollectionItemView({
           onToggleShowUnassigned={onToggleShowUnassigned}
           isShowUntaggedMode={isShowUntaggedMode} 
           onToggleShowUntagged={onToggleShowUntagged} 
-          isShowUndescribedMode={isShowUndescribedMode} // Pass new prop
-          onToggleShowUndescribed={onToggleShowUndescribed} // Pass new prop
+          isShowUndescribedMode={isShowUndescribedMode}
+          onToggleShowUndescribed={onToggleShowUndescribed}
         />
       </React.Fragment>
     ));
   };
 
 
-  if (!hierarchicalCollections || !imageCountsResult || !flatCollectionsForSelect || unassignedImageCount === undefined || totalImageCount === undefined || untaggedImageCount === undefined || potentialDuplicatesCount === undefined || undescribedImageCount === undefined) {
+  if (!hierarchicalCollections || !flatCollectionsForSelect || !allImagesMetadata) {
     return <div className="p-4"><Loader2 className="animate-spin" /> Cargando colecciones...</div>;
   }
 
@@ -550,7 +550,7 @@ function CollectionItemView({
               Revisar Duplicados
             </div>
             <Badge variant="secondary" className="ml-2 text-xs px-1.5 py-0.5">
-              {potentialDuplicatesCount}
+              {stats.potentialDuplicatesCount}
             </Badge>
           </SidebarMenuButton>
         </AliasedSidebarMenuItem>
@@ -566,7 +566,7 @@ function CollectionItemView({
               No asignadas
             </div>
             <Badge variant="secondary" className="ml-2 text-xs px-1.5 py-0.5">
-              {unassignedImageCount}
+              {stats.unassignedImageCount}
             </Badge>
           </SidebarMenuButton>
         </AliasedSidebarMenuItem>
@@ -582,23 +582,23 @@ function CollectionItemView({
               Sin etiquetas
             </div>
             <Badge variant="secondary" className="ml-2 text-xs px-1.5 py-0.5">
-              {untaggedImageCount}
+              {stats.untaggedImageCount}
             </Badge>
           </SidebarMenuButton>
         </AliasedSidebarMenuItem>
         
-        <AliasedSidebarMenuItem> {/* New Item for Undescribed */}
+        <AliasedSidebarMenuItem>
           <SidebarMenuButton
             onClick={handleSelectShowUndescribed}
             isActive={isShowUndescribedMode}
             className="flex items-center justify-between w-full"
           >
             <div className="flex items-center">
-              <FileX size={16} className="mr-1 flex-shrink-0" /> {/* Using FileX icon */}
+              <FileX size={16} className="mr-1 flex-shrink-0" />
               Sin descripción
             </div>
             <Badge variant="secondary" className="ml-2 text-xs px-1.5 py-0.5">
-              {undescribedImageCount}
+              {stats.undescribedImageCount}
             </Badge>
           </SidebarMenuButton>
         </AliasedSidebarMenuItem>
@@ -611,7 +611,7 @@ function CollectionItemView({
           >
             Todas las Imágenes
             <Badge variant="secondary" className="ml-2 text-xs px-1.5 py-0.5">
-                {totalImageCount}
+                {stats.totalImageCount}
             </Badge>
           </SidebarMenuButton>
         </AliasedSidebarMenuItem>
@@ -620,12 +620,3 @@ function CollectionItemView({
     </SidebarGroup>
   );
 }
-
-    
-
-    
-
-
-
-
-    
