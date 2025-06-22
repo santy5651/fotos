@@ -65,7 +65,10 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
 
   const imageCollections = useLiveQuery(async () => {
     if (displayImage.collectionIds && displayImage.collectionIds.length > 0) {
-      return db.collections.where('id').anyOf(displayImage.collectionIds).toArray();
+      const validCollectionIds = displayImage.collectionIds.filter(id => typeof id === 'number');
+      if (validCollectionIds.length > 0) {
+        return db.collections.where('id').anyOf(validCollectionIds).toArray();
+      }
     }
     return [];
   }, [displayImage.id, displayImage.collectionIds], []);
