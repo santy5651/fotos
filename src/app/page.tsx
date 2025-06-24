@@ -7,11 +7,12 @@ import AppLayout from '@/components/layout/AppLayout';
 import ImageGrid from '@/components/image/ImageGrid';
 import { db, getImages, getImageById, updateImage, blobToDataURL } from '@/lib/db';
 import type { ImageMetadata } from '@/types';
-import { Loader2, CheckSquare, Square, FolderPlus, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2, CheckSquare, Square, FolderPlus, FileText, ChevronLeft, ChevronRight, Tags } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import BulkAddToCollectionDialog from '@/components/collections/BulkAddToCollectionDialog';
 import { useToast } from "@/hooks/use-toast";
 import { describeImage } from '@/ai/flows/describe-image-flow';
+import { tagImage } from '@/ai/flows/tag-image';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from '@/components/ui/label';
 
@@ -30,6 +31,7 @@ export default function HomePage() {
   const [selectedImageIds, setSelectedImageIds] = useState<Set<number>>(new Set());
   const [isBulkAddToCollectionDialogOpen, setIsBulkAddToCollectionDialogOpen] = useState(false);
   const [isBulkDescribing, setIsBulkDescribing] = useState(false);
+  const [isBulkTagging, setIsBulkTagging] = useState(false);
 
   // Pagination and Layout States
   const [currentPage, setCurrentPage] = useState(1);
@@ -171,6 +173,72 @@ export default function HomePage() {
     }
   };
 
+  const handleBulkGenerateTags = async () => {
+    if (selectedImageIds.size === 0) {
+      toast({ variant: "destructive", title: "Sin Selección", description: "No hay imágenes seleccionadas para generar etiquetas." });
+      return;
+    }
+
+    setIsBulkTagging(true);
+    const imageIdArray = Array.from(selectedImageIds);
+    let successCount = 0;
+    let errorCount = 0;
+    const totalToProcess = imageIdArray.length;
+    let processedCount = 0;
+    
+    const progressToastId = 'bulk-tag-progress';
+    toast({
+      id: progressToastId,
+      title: "Procesando Etiquetas...",
+      description: `0 de ${totalToProcess} imágenes procesadas.`,
+      duration: Infinity, 
+    });
+
+    for (const imageId of imageIdArray) {
+      processedCount++;
+      try {
+        const image = await getImageById(imageId);
+        if (!image || !image.file) {
+          toast({ variant: "destructive", title: "Error", description: `No se encontró la imagen con ID ${imageId} o falta el archivo.` });
+          errorCount++;
+          continue;
+        }
+
+        const dataUri = await blobToDataURL(image.file, { defaultMimeTypeIfGeneric: 'image/png' });
+        const aiResult = await tagImage({ photoDataUri: dataUri });
+        await updateImage(imageId, { tags: aiResult.tags, hasTags: aiResult.tags.length > 0 });
+        successCount++;
+      } catch (error) {
+        errorCount++;
+        console.error(`Error generando etiquetas para imagen ID ${imageId}:`, error);
+        const errorMessage = (error as Error).message;
+        const isRateLimitError = errorMessage.includes('429') || errorMessage.toLowerCase().includes('quota');
+        toast({
+          variant: "destructive",
+          title: "Fallo al Generar Etiquetas",
+          description: `No se pudo generar etiquetas para la imagen ID ${imageId}. ${ isRateLimitError ? 'Límite de API alcanzado. Intenta más tarde.' : errorMessage }`
+        });
+      }
+      toast({ 
+        id: progressToastId,
+        title: "Procesando Etiquetas...",
+        description: `${processedCount} de ${totalToProcess} imágenes procesadas.`,
+        duration: Infinity,
+      });
+    }
+
+    dismiss(progressToastId); 
+    toast({
+      title: "Generación de Etiquetas Finalizada",
+      description: `${successCount} imágenes etiquetadas. ${errorCount > 0 ? `${errorCount} fallaron.` : ''}`,
+      duration: 5000,
+    });
+
+    setIsBulkTagging(false);
+    handleImageUpdate();
+    handleDeselectAllImages();
+  };
+
   const handleBulkGenerateDescriptions = async () => {
     if (selectedImageIds.size === 0) {
       toast({ variant: "destructive", title: "Sin Selección", description: "No hay imágenes seleccionadas para generar descripciones." });
@@ -300,19 +368,23 @@ export default function HomePage() {
           </p>
           <div className="flex items-center gap-2 flex-wrap">
             {images && selectedImageIds.size !== images.length && (
-              <Button variant="outline" size="sm" onClick={handleSelectAllImagesOnPage} disabled={isBulkDescribing}>
+              <Button variant="outline" size="sm" onClick={handleSelectAllImagesOnPage} disabled={isBulkDescribing || isBulkTagging}>
                 <CheckSquare className="mr-2 h-4 w-4" /> Seleccionar Página
               </Button>
             )}
             {selectedImageIds.size > 0 && (
-              <Button variant="outline" size="sm" onClick={handleDeselectAllImages} disabled={isBulkDescribing}>
+              <Button variant="outline" size="sm" onClick={handleDeselectAllImages} disabled={isBulkDescribing || isBulkTagging}>
                 <Square className="mr-2 h-4 w-4" /> Deseleccionar Todo
               </Button>
             )}
-            <Button variant="default" size="sm" onClick={handleOpenBulkAddToCollectionDialog} disabled={isBulkDescribing}>
+            <Button variant="default" size="sm" onClick={handleOpenBulkAddToCollectionDialog} disabled={isBulkDescribing || isBulkTagging}>
               <FolderPlus className="mr-2 h-4 w-4" /> Añadir a Colección
             </Button>
-            <Button variant="default" size="sm" onClick={handleBulkGenerateDescriptions} disabled={isBulkDescribing}>
+            <Button variant="default" size="sm" onClick={handleBulkGenerateTags} disabled={isBulkDescribing || isBulkTagging}>
+              {isBulkTagging ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Tags className="mr-2 h-4 w-4" />}
+              Generar Etiquetas
+            </Button>
+            <Button variant="default" size="sm" onClick={handleBulkGenerateDescriptions} disabled={isBulkDescribing || isBulkTagging}>
               {isBulkDescribing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
               Generar Descripciones
             </Button>
