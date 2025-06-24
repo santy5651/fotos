@@ -34,8 +34,8 @@ interface AppLayoutProps {
   isShowUnassignedMode: boolean; 
   onToggleShowUntagged: () => void;
   isShowUntaggedMode: boolean;
-  onToggleShowUndescribed: () => void; // New prop
-  isShowUndescribedMode: boolean; // New prop
+  onToggleShowUndescribed: () => void;
+  isShowUndescribedMode: boolean;
 }
 
 export default function AppLayout({ 
@@ -49,12 +49,13 @@ export default function AppLayout({
   isShowUnassignedMode, 
   onToggleShowUntagged,
   isShowUntaggedMode,
-  onToggleShowUndescribed, // New prop
-  isShowUndescribedMode, // New prop
+  onToggleShowUndescribed,
+  isShowUndescribedMode,
 }: AppLayoutProps) {
   const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
   const [isTagExplorerModalOpen, setIsTagExplorerModalOpen] = useState(false);
   const [isCollectionExplorerModalOpen, setIsCollectionExplorerModalOpen] = useState(false);
+  const [isAiProcessingEnabled, setIsAiProcessingEnabled] = useState(true);
 
   const handleCollectionSelectedFromExplorer = (collectionId: number | null) => {
     onCollectionSelect(collectionId);
@@ -83,8 +84,8 @@ export default function AppLayout({
               isShowUnassignedMode={isShowUnassignedMode} 
               onToggleShowUntagged={onToggleShowUntagged}
               isShowUntaggedMode={isShowUntaggedMode}
-              onToggleShowUndescribed={onToggleShowUndescribed} // Pass new prop
-              isShowUndescribedMode={isShowUndescribedMode} // Pass new prop
+              onToggleShowUndescribed={onToggleShowUndescribed}
+              isShowUndescribedMode={isShowUndescribedMode}
             />
           </ScrollArea>
         </SidebarContent>
@@ -99,7 +100,7 @@ export default function AppLayout({
           <div className="flex-1">
             <SearchBar onSearch={onSearch} />
           </div>
-          <ImageUpload onUploadComplete={onUploadComplete} />
+          <ImageUpload onUploadComplete={onUploadComplete} isAiProcessingEnabled={isAiProcessingEnabled} />
           <Button variant="outline" size="icon" onClick={() => setIsCollectionExplorerModalOpen(true)} title="Explorador de Colecciones">
             <FolderSearch className="h-5 w-5" />
             <span className="sr-only">Explorador de Colecciones</span>
@@ -112,7 +113,10 @@ export default function AppLayout({
             <BarChartBig className="h-5 w-5" />
             <span className="sr-only">Ver Estadísticas</span>
           </Button>
-          <SettingsDropdown />
+          <SettingsDropdown 
+            isAiProcessingEnabled={isAiProcessingEnabled}
+            onAiProcessingToggle={() => setIsAiProcessingEnabled(prev => !prev)}
+          />
         </header>
         <main className="flex-1 overflow-auto p-6">
           {children}
@@ -136,5 +140,3 @@ export default function AppLayout({
     </SidebarProvider>
   );
 }
-
-    

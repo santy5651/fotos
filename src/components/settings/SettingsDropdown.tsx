@@ -11,16 +11,22 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Settings, Download, Upload, Trash2, Loader2, FileJson, UploadCloud, FileSpreadsheet } from 'lucide-react';
+import { Settings, Download, Upload, Trash2, Loader2, FileJson, UploadCloud, FileSpreadsheet, Wand2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { exportData, importData, deleteAllData, exportDataAsSingleJson, importDataFromJson, getTotalImageCount, exportDataAsCsv } from '@/lib/db';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Input } from '../ui/input';
+import { Switch } from '../ui/switch';
+import { Label } from '../ui/label';
 
+interface SettingsDropdownProps {
+  isAiProcessingEnabled: boolean;
+  onAiProcessingToggle: () => void;
+}
 
-export default function SettingsDropdown() {
+export default function SettingsDropdown({ isAiProcessingEnabled, onAiProcessingToggle }: SettingsDropdownProps) {
   const { toast } = useToast();
   const [isImportingZip, setIsImportingZip] = useState(false);
   const [isImportingJson, setIsImportingJson] = useState(false);
@@ -234,9 +240,22 @@ export default function SettingsDropdown() {
             <span className="sr-only">Settings</span>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuContent align="end" className="w-64">
           <DropdownMenuLabel>App Settings</DropdownMenuLabel>
           <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="flex items-center justify-between">
+            <Label htmlFor="ai-processing-switch" className="flex items-center gap-2 font-normal cursor-pointer">
+              <Wand2 className="h-4 w-4" />
+              Procesamiento IA en subida
+            </Label>
+            <Switch
+              id="ai-processing-switch"
+              checked={isAiProcessingEnabled}
+              onCheckedChange={onAiProcessingToggle}
+            />
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>Gestión de Datos</DropdownMenuLabel>
           <DropdownMenuItem onClick={handleExportZip} disabled={anyOperationInProgress}>
             {isExportingZip ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
             Export Data (ZIP)
@@ -289,4 +308,3 @@ export default function SettingsDropdown() {
     </>
   );
 }
-

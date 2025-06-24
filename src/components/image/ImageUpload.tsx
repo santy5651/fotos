@@ -13,9 +13,10 @@ import { describeImage } from '@/ai/flows/describe-image-flow';
 
 interface ImageUploadProps {
   onUploadComplete: () => void;
+  isAiProcessingEnabled: boolean;
 }
 
-export default function ImageUpload({ onUploadComplete }: ImageUploadProps) {
+export default function ImageUpload({ onUploadComplete, isAiProcessingEnabled }: ImageUploadProps) {
   const [isUploading, setIsUploading] = useState(false);
   const { toast } = useToast();
 
@@ -52,46 +53,47 @@ export default function ImageUpload({ onUploadComplete }: ImageUploadProps) {
         // 1. Get dimensions
         const dimensions = await getImageDimensions(file);
 
-        // 2. Convert to data URI for AI, defaulting to image/png if MIME type is generic
-        const dataUri = await blobToDataURL(file, { defaultMimeTypeIfGeneric: 'image/png' });
+        if (isAiProcessingEnabled) {
+          // 2. Convert to data URI for AI, defaulting to image/png if MIME type is generic
+          const dataUri = await blobToDataURL(file, { defaultMimeTypeIfGeneric: 'image/png' });
 
-
-        // 3. AI Tagging
-        try {
-          const aiResultTags = await tagImage({ photoDataUri: dataUri });
-          tags = aiResultTags.tags;
-          if (!isPotentialDuplicate) { 
-            toast({ title: "Etiquetado IA", description: `Etiquetas generadas para ${file.name}: ${tags.join(', ')}` });
+          // 3. AI Tagging
+          try {
+            const aiResultTags = await tagImage({ photoDataUri: dataUri });
+            tags = aiResultTags.tags;
+            if (!isPotentialDuplicate) { 
+              toast({ title: "Etiquetado IA", description: `Etiquetas generadas para ${file.name}: ${tags.join(', ')}` });
+            }
+          } catch (aiError) {
+            taggingFailedCount++;
+            console.error("AI tagging error for " + file.name + ":", aiError);
+            const errorMessage = (aiError as Error).message;
+            const isRateLimitError = errorMessage.includes('429') || errorMessage.toLowerCase().includes('quota');
+            toast({ 
+              variant: "destructive", 
+              title: "Fallo en Etiquetado IA", 
+              description: `No se pudieron generar etiquetas para ${file.name}. ${isRateLimitError ? 'Límite de API alcanzado.' : errorMessage}` 
+            });
           }
-        } catch (aiError) {
-          taggingFailedCount++;
-          console.error("AI tagging error for " + file.name + ":", aiError);
-          const errorMessage = (aiError as Error).message;
-          const isRateLimitError = errorMessage.includes('429') || errorMessage.toLowerCase().includes('quota');
-          toast({ 
-            variant: "destructive", 
-            title: "Fallo en Etiquetado IA", 
-            description: `No se pudieron generar etiquetas para ${file.name}. ${isRateLimitError ? 'Límite de API alcanzado.' : errorMessage}` 
-          });
-        }
 
-        // 4. AI Description
-        try {
-          const aiResultDesc = await describeImage({ photoDataUri: dataUri });
-          description = aiResultDesc.description;
-           if (!isPotentialDuplicate) {
-            toast({ title: "Descripción IA", description: `Descripción generada para ${file.name}.` });
+          // 4. AI Description
+          try {
+            const aiResultDesc = await describeImage({ photoDataUri: dataUri });
+            description = aiResultDesc.description;
+             if (!isPotentialDuplicate) {
+              toast({ title: "Descripción IA", description: `Descripción generada para ${file.name}.` });
+            }
+          } catch (aiError) {
+            descriptionFailedCount++;
+            console.error("AI description error for " + file.name + ":", aiError);
+            const errorMessage = (aiError as Error).message;
+            const isRateLimitError = errorMessage.includes('429') || errorMessage.toLowerCase().includes('quota');
+            toast({ 
+              variant: "destructive", 
+              title: "Fallo en Descripción IA", 
+              description: `No se pudo generar descripción para ${file.name}. ${isRateLimitError ? 'Límite de API alcanzado.' : errorMessage}` 
+            });
           }
-        } catch (aiError) {
-          descriptionFailedCount++;
-          console.error("AI description error for " + file.name + ":", aiError);
-          const errorMessage = (aiError as Error).message;
-          const isRateLimitError = errorMessage.includes('429') || errorMessage.toLowerCase().includes('quota');
-          toast({ 
-            variant: "destructive", 
-            title: "Fallo en Descripción IA", 
-            description: `No se pudo generar descripción para ${file.name}. ${isRateLimitError ? 'Límite de API alcanzado.' : errorMessage}` 
-          });
         }
         
 
@@ -114,8 +116,12 @@ export default function ImageUpload({ onUploadComplete }: ImageUploadProps) {
 
         await addImage(imageMetadata as any);
         uploadedCount++;
-        if (!isPotentialDuplicate && tags.length > 0 && description.trim() !== "") { 
+        if (!isPotentialDuplicate) {
+          if (isAiProcessingEnabled) {
             toast({ title: "Subida Exitosa", description: `${file.name} subida, etiquetada y descrita.` });
+          } else {
+            toast({ title: "Subida Exitosa", description: `${file.name} subida sin procesamiento de IA.` });
+          }
         }
 
 
