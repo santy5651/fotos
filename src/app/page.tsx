@@ -213,10 +213,22 @@ export default function HomePage() {
         console.error(`Error generando etiquetas para imagen ID ${imageId}:`, error);
         const errorMessage = (error as Error).message;
         const isRateLimitError = errorMessage.includes('429') || errorMessage.toLowerCase().includes('quota');
+        
+        if (isRateLimitError) {
+          toast({
+            variant: "destructive",
+            title: "Límite de API Alcanzado",
+            description: `El proceso se ha detenido por límite de cuota. ${successCount} imágenes procesadas. Intenta de nuevo más tarde.`,
+            duration: 8000,
+          });
+          errorCount--; 
+          break; // Stop the loop
+        }
+
         toast({
           variant: "destructive",
           title: "Fallo al Generar Etiquetas",
-          description: `No se pudo generar etiquetas para la imagen ID ${imageId}. ${ isRateLimitError ? 'Límite de API alcanzado. Intenta más tarde.' : errorMessage }`
+          description: `No se pudo generar etiquetas para la imagen ID ${imageId}. ${errorMessage}`
         });
       }
       toast({ 
@@ -279,20 +291,29 @@ export default function HomePage() {
         console.error(`Error generando descripción para imagen ID ${imageId}:`, error);
         const errorMessage = (error as Error).message;
         const isRateLimitError = errorMessage.includes('429') || errorMessage.toLowerCase().includes('quota');
+        
+        if (isRateLimitError) {
+          toast({
+            variant: "destructive",
+            title: "Límite de API Alcanzado",
+            description: `El proceso se ha detenido por límite de cuota. ${successCount} imágenes procesadas. Intenta de nuevo más tarde.`,
+            duration: 8000,
+          });
+          errorCount--;
+          break; // Stop the loop
+        }
+
         toast({
           variant: "destructive",
           title: "Fallo al Generar Descripción",
-          description: `No se pudo generar descripción para la imagen ID ${imageId}. ${ isRateLimitError ? 'Límite de API alcanzado. Intenta más tarde.' : errorMessage }`
+          description: `No se pudo generar descripción para la imagen ID ${imageId}. ${errorMessage}`
         });
       }
-      // Update toast with new progress
-      // Note: The original toast object doesn't have an update method itself if using our custom hook directly.
-      // We need to call `toast` again with the same ID to update it.
-       toast({ 
-        id: progressToastId, // Use the same ID to update the existing toast
+      toast({ 
+        id: progressToastId,
         title: "Procesando Descripciones...",
         description: `${processedCount} de ${totalToProcess} imágenes procesadas.`,
-        duration: Infinity, // Keep it sticky
+        duration: Infinity,
       });
     }
 
