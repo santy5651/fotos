@@ -53,7 +53,24 @@ export default function ImageUpload({ onUploadComplete, isAiProcessingEnabled }:
         if (continueAiProcessing && !isPotentialDuplicate) {
           const dataUri = await blobToDataURL(file, { defaultMimeTypeIfGeneric: 'image/png' });
           try {
-            const aiResult = await processImage({ photoDataUri: dataUri });
+            let aiResult;
+            try {
+              aiResult = await processImage({ photoDataUri: dataUri });
+            } catch (error) {
+              const errorMessage = (error as Error).message;
+              const isServiceUnavailableError = errorMessage.includes('503') || errorMessage.toLowerCase().includes('service unavailable');
+              if (isServiceUnavailableError) {
+                toast({
+                  title: `Servicio no disponible para ${file.name}`,
+                  description: "Reintentando en 30 segundos...",
+                  duration: 30000,
+                });
+                await new Promise(resolve => setTimeout(resolve, 30000));
+                aiResult = await processImage({ photoDataUri: dataUri });
+              } else {
+                throw error;
+              }
+            }
             tags = aiResult.tags;
             description = aiResult.description;
             toast({ title: "Procesamiento IA", description: `Etiquetas y descripción generadas para ${file.name}.` });
@@ -77,7 +94,7 @@ export default function ImageUpload({ onUploadComplete, isAiProcessingEnabled }:
               toast({
                 variant: "destructive",
                 title: "Servicio de IA No Disponible",
-                description: "El servicio de IA está sobrecargado. El procesamiento con IA se detendrá para este lote.",
+                description: "El servicio de IA no está disponible tras un reintento. El procesamiento con IA se detendrá para este lote.",
                 duration: 8000,
               });
             } else {

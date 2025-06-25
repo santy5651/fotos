@@ -138,7 +138,25 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
     setIsProcessingWithAI(true);
     try {
       const dataUri = await blobToDataURL(fullImage.file, { defaultMimeTypeIfGeneric: 'image/png' });
-      const aiResult = await processImage({ photoDataUri: dataUri });
+      
+      let aiResult;
+      try {
+        aiResult = await processImage({ photoDataUri: dataUri });
+      } catch (error) {
+        const errorMessage = (error as Error).message;
+        const isServiceUnavailableError = errorMessage.includes('503') || errorMessage.toLowerCase().includes('service unavailable');
+        if (isServiceUnavailableError) {
+          toast({
+            title: "Servicio no disponible",
+            description: "Reintentando en 30 segundos...",
+            duration: 30000,
+          });
+          await new Promise(resolve => setTimeout(resolve, 30000));
+          aiResult = await processImage({ photoDataUri: dataUri });
+        } else {
+          throw error;
+        }
+      }
       
       await updateImage(fullImage.id, { 
         tags: aiResult.tags, 
@@ -165,7 +183,7 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
         toast({
             variant: "destructive",
             title: "Servicio de IA No Disponible",
-            description: `El modelo de IA está sobrecargado. No se pudo procesar ${fullImage.name}. Intenta de nuevo más tarde.`
+            description: `El reintento falló. No se pudo procesar ${fullImage.name}. Intenta de nuevo más tarde.`
         });
       } else {
         toast({

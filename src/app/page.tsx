@@ -203,7 +203,26 @@ export default function HomePage() {
         }
 
         const dataUri = await blobToDataURL(image.file, { defaultMimeTypeIfGeneric: 'image/png' });
-        const aiResult = await processImage({ photoDataUri: dataUri });
+        
+        let aiResult;
+        try {
+          aiResult = await processImage({ photoDataUri: dataUri });
+        } catch (error) {
+          const errorMessage = (error as Error).message;
+          const isServiceUnavailableError = errorMessage.includes('503') || errorMessage.toLowerCase().includes('service unavailable');
+          if (isServiceUnavailableError) {
+            toast({
+              id: progressToastId,
+              title: "Servicio no disponible",
+              description: `Reintentando en 30 segundos para la imagen ID ${imageId}...`,
+              duration: 30000,
+            });
+            await new Promise(resolve => setTimeout(resolve, 30000));
+            aiResult = await processImage({ photoDataUri: dataUri });
+          } else {
+            throw error;
+          }
+        }
         
         await updateImage(imageId, { 
             tags: aiResult.tags, 
@@ -234,7 +253,7 @@ export default function HomePage() {
           toast({
             variant: "destructive",
             title: "Servicio de IA No Disponible",
-            description: `El servicio de IA está sobrecargado. El proceso se detuvo. ${successCount} imágenes procesadas. Intenta de nuevo más tarde.`,
+            description: `El servicio de IA sigue sin estar disponible tras un reintento. El proceso se detuvo. ${successCount} imágenes procesadas.`,
             duration: 8000,
           });
           errorCount--; 
