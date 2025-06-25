@@ -62,6 +62,7 @@ export default function ImageUpload({ onUploadComplete, isAiProcessingEnabled }:
             console.error("AI processing error for " + file.name + ":", aiError);
             const errorMessage = (aiError as Error).message;
             const isRateLimitError = errorMessage.includes('429') || errorMessage.toLowerCase().includes('quota');
+            const isServiceUnavailableError = errorMessage.includes('503') || errorMessage.toLowerCase().includes('service unavailable');
             
             if (isRateLimitError) {
               continueAiProcessing = false;
@@ -69,6 +70,14 @@ export default function ImageUpload({ onUploadComplete, isAiProcessingEnabled }:
                 variant: "destructive",
                 title: "Límite de API Alcanzado",
                 description: "El procesamiento con IA se detendrá para el resto de las imágenes en este lote.",
+                duration: 8000,
+              });
+            } else if (isServiceUnavailableError) {
+              continueAiProcessing = false;
+              toast({
+                variant: "destructive",
+                title: "Servicio de IA No Disponible",
+                description: "El servicio de IA está sobrecargado. El procesamiento con IA se detendrá para este lote.",
                 duration: 8000,
               });
             } else {

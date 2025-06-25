@@ -153,11 +153,27 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
       console.error("Error processing with AI:", error);
       const errorMessage = (error as Error).message;
       const isRateLimitError = errorMessage.includes('429') || errorMessage.toLowerCase().includes('quota') || errorMessage.toLowerCase().includes('rate limit');
-      toast({
-        variant: "destructive",
-        title: "Fallo en Procesamiento de IA",
-        description: `No se pudo procesar la imagen ${fullImage.name}. ${ isRateLimitError ? 'Límite de API alcanzado. Intenta más tarde.' : errorMessage }`
-      });
+      const isServiceUnavailableError = errorMessage.includes('503') || errorMessage.toLowerCase().includes('service unavailable');
+
+      if (isRateLimitError) {
+        toast({
+            variant: "destructive",
+            title: "Límite de API Alcanzado",
+            description: `No se pudo procesar ${fullImage.name}. Intenta de nuevo más tarde.`
+        });
+      } else if (isServiceUnavailableError) {
+        toast({
+            variant: "destructive",
+            title: "Servicio de IA No Disponible",
+            description: `El modelo de IA está sobrecargado. No se pudo procesar ${fullImage.name}. Intenta de nuevo más tarde.`
+        });
+      } else {
+        toast({
+            variant: "destructive",
+            title: "Fallo en Procesamiento de IA",
+            description: `No se pudo procesar la imagen ${fullImage.name}. ${errorMessage}`
+        });
+      }
     } finally {
       setIsProcessingWithAI(false);
     }

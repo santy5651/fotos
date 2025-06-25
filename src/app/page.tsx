@@ -217,12 +217,24 @@ export default function HomePage() {
         console.error(`Error procesando imagen ID ${imageId}:`, error);
         const errorMessage = (error as Error).message;
         const isRateLimitError = errorMessage.includes('429') || errorMessage.toLowerCase().includes('quota');
-        
+        const isServiceUnavailableError = errorMessage.includes('503') || errorMessage.toLowerCase().includes('service unavailable');
+
         if (isRateLimitError) {
           toast({
             variant: "destructive",
             title: "Límite de API Alcanzado",
             description: `El proceso se ha detenido por límite de cuota. ${successCount} imágenes procesadas. Intenta de nuevo más tarde.`,
+            duration: 8000,
+          });
+          errorCount--; 
+          break; // Stop the loop
+        }
+        
+        if (isServiceUnavailableError) {
+          toast({
+            variant: "destructive",
+            title: "Servicio de IA No Disponible",
+            description: `El servicio de IA está sobrecargado. El proceso se detuvo. ${successCount} imágenes procesadas. Intenta de nuevo más tarde.`,
             duration: 8000,
           });
           errorCount--; 
