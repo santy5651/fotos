@@ -18,8 +18,7 @@ import ImageZoomModal from './ImageZoomModal';
 import RenameImageDialog from './RenameImageDialog';
 import { Checkbox } from '@/components/ui/checkbox'; 
 import { cn } from '@/lib/utils';
-import { tagImage } from '@/ai/flows/tag-image'; 
-import { describeImage } from '@/ai/flows/describe-image-flow';
+import { processImage } from '@/ai/flows/process-image-flow';
 import ImageDetailsModal from './ImageDetailsModal';
 
 interface ImageCardProps {
@@ -40,8 +39,7 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
   const [isAddToCollectionDialogOpen, setIsAddToCollectionDialogOpen] = useState(false);
   const [isZoomModalOpen, setIsZoomModalOpen] = useState(false);
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
-  const [isRetagging, setIsRetagging] = useState(false); 
-  const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
+  const [isProcessingWithAI, setIsProcessingWithAI] = useState(false);
   const [isImageDetailsModalOpen, setIsImageDetailsModalOpen] = useState(false);
 
   // Use the fullImage for display data if available, otherwise fall back to the initial lightweight prop.
@@ -132,65 +130,36 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
     onUpdate();
   }
 
-  const handleRegenerateTags = async () => {
+  const handleProcessWithAI = async () => {
     if (!fullImage?.id || !fullImage?.file) {
       toast({ variant: "destructive", title: "Error", description: "El archivo de imagen completo no está cargado. Inténtelo de nuevo en un momento." });
       return;
     }
-    setIsRetagging(true);
+    setIsProcessingWithAI(true);
     try {
       const dataUri = await blobToDataURL(fullImage.file, { defaultMimeTypeIfGeneric: 'image/png' });
-      const aiResult = await tagImage({ photoDataUri: dataUri });
-      await updateImage(fullImage.id, { tags: aiResult.tags, hasTags: aiResult.tags.length > 0 });
-      toast({ title: "Etiquetas Regeneradas", description: `Se generaron nuevas etiquetas para ${fullImage.name}.` });
-      onUpdate(); 
-    } catch (error) {
-      console.error("Error regenerating tags:", error);
-      const errorMessage = (error as Error).message;
-      const isRateLimitError = errorMessage.includes('429') || errorMessage.toLowerCase().includes('quota') || errorMessage.toLowerCase().includes('rate limit');
-      toast({
-        variant: "destructive",
-        title: "Fallo al Regenerar Etiquetas",
-        description: `No se pudieron generar etiquetas para ${fullImage.name}. ${ isRateLimitError ? 'Límite de API alcanzado. Intenta más tarde.' : errorMessage }`
-      });
-    } finally {
-      setIsRetagging(false);
-    }
-  };
-
-  const handleGenerateDescription = async () => {
-    if (!fullImage?.id || !fullImage?.file) {
-      toast({ variant: "destructive", title: "Error", description: "El archivo de imagen completo no está cargado. Inténtelo de nuevo en un momento." });
-      return;
-    }
-    setIsGeneratingDescription(true);
-    try {
-      const dataUri = await blobToDataURL(fullImage.file, { defaultMimeTypeIfGeneric: 'image/png' });
-      const aiResult = await describeImage({ photoDataUri: dataUri });
+      const aiResult = await processImage({ photoDataUri: dataUri });
       
-      const newDescription = aiResult.description;
-      const descriptionToSave = typeof newDescription === 'string' ? newDescription : "";
-      const newHasDescription = descriptionToSave.trim() !== "";
+      await updateImage(fullImage.id, { 
+        tags: aiResult.tags, 
+        hasTags: aiResult.tags.length > 0,
+        description: aiResult.description,
+        hasDescription: aiResult.description.trim() !== ""
+      });
 
-      await updateImage(fullImage.id, { description: descriptionToSave, hasDescription: newHasDescription });
-
-      if (newHasDescription) {
-        toast({ title: "Descripción Generada", description: `Se generó una descripción para ${fullImage.name}.` });
-      } else {
-        toast({ title: "Descripción No Detallada", description: `La IA generó una descripción vacía o no pudo detallar ${fullImage.name}. Intente de nuevo o con otra imagen.`, duration: 7000 });
-      }
+      toast({ title: "Procesamiento de IA Completo", description: `Se generaron etiquetas y descripción para ${fullImage.name}.` });
       onUpdate(); 
     } catch (error) {
-      console.error("Error generating description:", error);
+      console.error("Error processing with AI:", error);
       const errorMessage = (error as Error).message;
       const isRateLimitError = errorMessage.includes('429') || errorMessage.toLowerCase().includes('quota') || errorMessage.toLowerCase().includes('rate limit');
       toast({
         variant: "destructive",
-        title: "Fallo al Generar Descripción",
-        description: `No se pudo generar una descripción para ${fullImage.name}. ${ isRateLimitError ? 'Límite de API alcanzado. Intenta más tarde.' : errorMessage }`
+        title: "Fallo en Procesamiento de IA",
+        description: `No se pudo procesar la imagen ${fullImage.name}. ${ isRateLimitError ? 'Límite de API alcanzado. Intenta más tarde.' : errorMessage }`
       });
     } finally {
-      setIsGeneratingDescription(false);
+      setIsProcessingWithAI(false);
     }
   };
 
@@ -319,25 +288,7 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
                 </div>
               )}
             </div>
-          ) : (
-            <div className="flex items-center">
-              <span className="text-xs text-muted-foreground italic mr-2">No hay etiquetas.</span>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={handleRegenerateTags} 
-                disabled={isRetagging || !fullImage}
-                className="h-7 px-2 py-1 text-xs"
-              >
-                {isRetagging ? (
-                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                ) : (
-                  <Wand2 className="mr-1 h-3 w-3" />
-                )}
-                Regenerar
-              </Button>
-            </div>
-          )}
+          ) : null}
 
           {displayImage.collectionIds && displayImage.collectionIds.length > 0 && !displayImage.isPotentialDuplicate && (
             <div>
@@ -367,26 +318,31 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
               <p className="text-xs text-muted-foreground pt-1 leading-snug max-h-10 overflow-hidden text-ellipsis" title={displayImage.description}>
                 {displayImage.description}
               </p>
-            ) : (
-              <div className="pt-1 flex items-center">
-                <span className="text-xs text-muted-foreground italic mr-2">Sin descripción.</span>
+            ) : null
+          )}
+          
+          {!displayImage.isPotentialDuplicate && (!displayImage.hasTags || !displayImage.hasDescription) && (
+             <div className="pt-1 flex items-center">
+                <span className="text-xs text-muted-foreground italic mr-2">
+                  {!displayImage.hasTags && !displayImage.hasDescription ? "Sin etiquetas ni descripción." : !displayImage.hasTags ? "Sin etiquetas." : "Sin descripción."}
+                </span>
                 <Button 
                   variant="outline" 
                   size="sm" 
-                  onClick={handleGenerateDescription} 
-                  disabled={isGeneratingDescription || !fullImage}
+                  onClick={handleProcessWithAI} 
+                  disabled={isProcessingWithAI || !fullImage}
                   className="h-7 px-2 py-1 text-xs"
                 >
-                  {isGeneratingDescription ? (
+                  {isProcessingWithAI ? (
                     <Loader2 className="mr-1 h-3 w-3 animate-spin" />
                   ) : (
-                    <FileText className="mr-1 h-3 w-3" />
+                    <Wand2 className="mr-1 h-3 w-3" />
                   )}
-                  Generar
+                  Procesar con IA
                 </Button>
               </div>
-            )
           )}
+
         </CardHeader>
 
         <CardFooter className="flex justify-between items-center px-4 pb-3 pt-2">

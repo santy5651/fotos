@@ -7,12 +7,11 @@ import AppLayout from '@/components/layout/AppLayout';
 import ImageGrid from '@/components/image/ImageGrid';
 import { db, getImages, getImageById, updateImage, blobToDataURL } from '@/lib/db';
 import type { ImageMetadata } from '@/types';
-import { Loader2, CheckSquare, Square, FolderPlus, FileText, ChevronLeft, ChevronRight, Tags } from 'lucide-react';
+import { Loader2, CheckSquare, Square, FolderPlus, Wand2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import BulkAddToCollectionDialog from '@/components/collections/BulkAddToCollectionDialog';
 import { useToast } from "@/hooks/use-toast";
-import { describeImage } from '@/ai/flows/describe-image-flow';
-import { tagImage } from '@/ai/flows/tag-image';
+import { processImage } from '@/ai/flows/process-image-flow';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from '@/components/ui/label';
 
@@ -30,8 +29,7 @@ export default function HomePage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedImageIds, setSelectedImageIds] = useState<Set<number>>(new Set());
   const [isBulkAddToCollectionDialogOpen, setIsBulkAddToCollectionDialogOpen] = useState(false);
-  const [isBulkDescribing, setIsBulkDescribing] = useState(false);
-  const [isBulkTagging, setIsBulkTagging] = useState(false);
+  const [isBulkProcessing, setIsBulkProcessing] = useState(false);
 
   // Pagination and Layout States
   const [currentPage, setCurrentPage] = useState(1);
@@ -173,23 +171,23 @@ export default function HomePage() {
     }
   };
 
-  const handleBulkGenerateTags = async () => {
+  const handleBulkProcess = async () => {
     if (selectedImageIds.size === 0) {
-      toast({ variant: "destructive", title: "Sin Selección", description: "No hay imágenes seleccionadas para generar etiquetas." });
+      toast({ variant: "destructive", title: "Sin Selección", description: "No hay imágenes seleccionadas para procesar." });
       return;
     }
 
-    setIsBulkTagging(true);
+    setIsBulkProcessing(true);
     const imageIdArray = Array.from(selectedImageIds);
     let successCount = 0;
     let errorCount = 0;
     const totalToProcess = imageIdArray.length;
     let processedCount = 0;
     
-    const progressToastId = 'bulk-tag-progress';
+    const progressToastId = 'bulk-process-progress';
     toast({
       id: progressToastId,
-      title: "Procesando Etiquetas...",
+      title: "Procesando con IA...",
       description: `0 de ${totalToProcess} imágenes procesadas.`,
       duration: Infinity, 
     });
@@ -205,12 +203,18 @@ export default function HomePage() {
         }
 
         const dataUri = await blobToDataURL(image.file, { defaultMimeTypeIfGeneric: 'image/png' });
-        const aiResult = await tagImage({ photoDataUri: dataUri });
-        await updateImage(imageId, { tags: aiResult.tags, hasTags: aiResult.tags.length > 0 });
+        const aiResult = await processImage({ photoDataUri: dataUri });
+        
+        await updateImage(imageId, { 
+            tags: aiResult.tags, 
+            hasTags: aiResult.tags.length > 0,
+            description: aiResult.description,
+            hasDescription: aiResult.description.trim() !== ""
+        });
         successCount++;
       } catch (error) {
         errorCount++;
-        console.error(`Error generando etiquetas para imagen ID ${imageId}:`, error);
+        console.error(`Error procesando imagen ID ${imageId}:`, error);
         const errorMessage = (error as Error).message;
         const isRateLimitError = errorMessage.includes('429') || errorMessage.toLowerCase().includes('quota');
         
@@ -227,13 +231,13 @@ export default function HomePage() {
 
         toast({
           variant: "destructive",
-          title: "Fallo al Generar Etiquetas",
-          description: `No se pudo generar etiquetas para la imagen ID ${imageId}. ${errorMessage}`
+          title: "Fallo al Procesar con IA",
+          description: `No se pudo procesar la imagen ID ${imageId}. ${errorMessage}`
         });
       }
       toast({ 
         id: progressToastId,
-        title: "Procesando Etiquetas...",
+        title: "Procesando con IA...",
         description: `${processedCount} de ${totalToProcess} imágenes procesadas.`,
         duration: Infinity,
       });
@@ -241,90 +245,12 @@ export default function HomePage() {
 
     dismiss(progressToastId); 
     toast({
-      title: "Generación de Etiquetas Finalizada",
-      description: `${successCount} imágenes etiquetadas. ${errorCount > 0 ? `${errorCount} fallaron.` : ''}`,
+      title: "Procesamiento en Lote Finalizado",
+      description: `${successCount} imágenes procesadas. ${errorCount > 0 ? `${errorCount} fallaron.` : ''}`,
       duration: 5000,
     });
 
-    setIsBulkTagging(false);
-    handleImageUpdate();
-    handleDeselectAllImages();
-  };
-
-  const handleBulkGenerateDescriptions = async () => {
-    if (selectedImageIds.size === 0) {
-      toast({ variant: "destructive", title: "Sin Selección", description: "No hay imágenes seleccionadas para generar descripciones." });
-      return;
-    }
-
-    setIsBulkDescribing(true);
-    const imageIdArray = Array.from(selectedImageIds);
-    let successCount = 0;
-    let errorCount = 0;
-    const totalToProcess = imageIdArray.length;
-    let processedCount = 0;
-    
-    const progressToastId = 'bulk-describe-progress';
-    toast({
-      id: progressToastId,
-      title: "Procesando Descripciones...",
-      description: `0 de ${totalToProcess} imágenes procesadas.`,
-      duration: Infinity, 
-    });
-
-    for (const imageId of imageIdArray) {
-      processedCount++;
-      try {
-        const image = await getImageById(imageId);
-        if (!image || !image.file) {
-          toast({ variant: "destructive", title: "Error", description: `No se encontró la imagen con ID ${imageId} o falta el archivo.` });
-          errorCount++;
-          continue;
-        }
-
-        const dataUri = await blobToDataURL(image.file, { defaultMimeTypeIfGeneric: 'image/png' });
-        const aiResult = await describeImage({ photoDataUri: dataUri });
-        await updateImage(imageId, { description: aiResult.description, hasDescription: aiResult.description.trim() !== "" });
-        successCount++;
-      } catch (error) {
-        errorCount++;
-        console.error(`Error generando descripción para imagen ID ${imageId}:`, error);
-        const errorMessage = (error as Error).message;
-        const isRateLimitError = errorMessage.includes('429') || errorMessage.toLowerCase().includes('quota');
-        
-        if (isRateLimitError) {
-          toast({
-            variant: "destructive",
-            title: "Límite de API Alcanzado",
-            description: `El proceso se ha detenido por límite de cuota. ${successCount} imágenes procesadas. Intenta de nuevo más tarde.`,
-            duration: 8000,
-          });
-          errorCount--;
-          break; // Stop the loop
-        }
-
-        toast({
-          variant: "destructive",
-          title: "Fallo al Generar Descripción",
-          description: `No se pudo generar descripción para la imagen ID ${imageId}. ${errorMessage}`
-        });
-      }
-      toast({ 
-        id: progressToastId,
-        title: "Procesando Descripciones...",
-        description: `${processedCount} de ${totalToProcess} imágenes procesadas.`,
-        duration: Infinity,
-      });
-    }
-
-    dismiss(progressToastId); 
-    toast({
-      title: "Generación en Lote Finalizada",
-      description: `${successCount} descripciones generadas. ${errorCount > 0 ? `${errorCount} fallaron.` : ''}`,
-      duration: 5000,
-    });
-
-    setIsBulkDescribing(false);
+    setIsBulkProcessing(false);
     handleImageUpdate();
     handleDeselectAllImages();
   };
@@ -389,25 +315,21 @@ export default function HomePage() {
           </p>
           <div className="flex items-center gap-2 flex-wrap">
             {images && selectedImageIds.size !== images.length && (
-              <Button variant="outline" size="sm" onClick={handleSelectAllImagesOnPage} disabled={isBulkDescribing || isBulkTagging}>
+              <Button variant="outline" size="sm" onClick={handleSelectAllImagesOnPage} disabled={isBulkProcessing}>
                 <CheckSquare className="mr-2 h-4 w-4" /> Seleccionar Página
               </Button>
             )}
             {selectedImageIds.size > 0 && (
-              <Button variant="outline" size="sm" onClick={handleDeselectAllImages} disabled={isBulkDescribing || isBulkTagging}>
+              <Button variant="outline" size="sm" onClick={handleDeselectAllImages} disabled={isBulkProcessing}>
                 <Square className="mr-2 h-4 w-4" /> Deseleccionar Todo
               </Button>
             )}
-            <Button variant="default" size="sm" onClick={handleOpenBulkAddToCollectionDialog} disabled={isBulkDescribing || isBulkTagging}>
+            <Button variant="default" size="sm" onClick={handleOpenBulkAddToCollectionDialog} disabled={isBulkProcessing}>
               <FolderPlus className="mr-2 h-4 w-4" /> Añadir a Colección
             </Button>
-            <Button variant="default" size="sm" onClick={handleBulkGenerateTags} disabled={isBulkDescribing || isBulkTagging}>
-              {isBulkTagging ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Tags className="mr-2 h-4 w-4" />}
-              Generar Etiquetas
-            </Button>
-            <Button variant="default" size="sm" onClick={handleBulkGenerateDescriptions} disabled={isBulkDescribing || isBulkTagging}>
-              {isBulkDescribing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
-              Generar Descripciones
+            <Button variant="default" size="sm" onClick={handleBulkProcess} disabled={isBulkProcessing}>
+              {isBulkProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
+              Generar Etiquetas y Descripción
             </Button>
           </div>
         </div>
