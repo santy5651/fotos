@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react';
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ThemeProvider } from "@/components/ThemeProvider";
 
 interface ProvidersProps {
   children: ReactNode;
@@ -10,9 +11,16 @@ interface ProvidersProps {
 
 export function Providers({ children }: ProvidersProps) {
   return (
-    <TooltipProvider>
-      {children}
-      <Toaster />
-    </TooltipProvider>
+    <ThemeProvider
+      attribute="class"
+      defaultTheme="system"
+      enableSystem
+      disableTransitionOnChange
+    >
+      <TooltipProvider>
+        {children}
+        <Toaster />
+      </TooltipProvider>
+    </ThemeProvider>
   );
 }

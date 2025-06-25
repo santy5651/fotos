@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useRef } from 'react';
@@ -10,8 +9,13 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuPortal,
+  DropdownMenuSubContent,
 } from '@/components/ui/dropdown-menu';
-import { Settings, Download, Upload, Trash2, Loader2, FileJson, UploadCloud, FileSpreadsheet, Wand2 } from 'lucide-react';
+import { Settings, Download, Upload, Trash2, Loader2, FileJson, UploadCloud, FileSpreadsheet, Wand2, Sun, Moon, Laptop } from 'lucide-react';
+import { useTheme } from 'next-themes';
 import { useToast } from '@/hooks/use-toast';
 import { exportData, importData, deleteAllData, exportDataAsSingleJson, importDataFromJson, getTotalImageCount, exportDataAsCsv } from '@/lib/db';
 import JSZip from 'jszip';
@@ -27,6 +31,7 @@ interface SettingsDropdownProps {
 }
 
 export default function SettingsDropdown({ isAiProcessingEnabled, onAiProcessingToggle }: SettingsDropdownProps) {
+  const { setTheme } = useTheme();
   const { toast } = useToast();
   const [isImportingZip, setIsImportingZip] = useState(false);
   const [isImportingJson, setIsImportingJson] = useState(false);
@@ -243,6 +248,29 @@ export default function SettingsDropdown({ isAiProcessingEnabled, onAiProcessing
         <DropdownMenuContent align="end" className="w-64">
           <DropdownMenuLabel>App Settings</DropdownMenuLabel>
           <DropdownMenuSeparator />
+           <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+              <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+              <span className="ml-2">Toggle Theme</span>
+            </DropdownMenuSubTrigger>
+            <DropdownMenuPortal>
+              <DropdownMenuSubContent>
+                <DropdownMenuItem onClick={() => setTheme("light")}>
+                  <Sun className="mr-2 h-4 w-4" />
+                  Light
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setTheme("dark")}>
+                  <Moon className="mr-2 h-4 w-4" />
+                  Dark
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setTheme("system")}>
+                  <Laptop className="mr-2 h-4 w-4" />
+                  System
+                </DropdownMenuItem>
+              </DropdownMenuSubContent>
+            </DropdownMenuPortal>
+          </DropdownMenuSub>
           <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="flex items-center justify-between">
             <Label htmlFor="ai-processing-switch" className="flex items-center gap-2 font-normal cursor-pointer">
               <Wand2 className="h-4 w-4" />
