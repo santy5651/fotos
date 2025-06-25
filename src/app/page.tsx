@@ -209,8 +209,7 @@ export default function HomePage() {
           aiResult = await processImage({ photoDataUri: dataUri });
         } catch (error) {
           const errorMessage = (error as Error).message;
-          const isServiceUnavailableError = errorMessage.includes('503') || errorMessage.toLowerCase().includes('service unavailable');
-          if (isServiceUnavailableError) {
+          if (errorMessage.includes('503') || errorMessage.toLowerCase().includes('service unavailable')) {
             toast({
               id: progressToastId,
               title: "Servicio no disponible",

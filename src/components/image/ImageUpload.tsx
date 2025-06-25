@@ -58,8 +58,7 @@ export default function ImageUpload({ onUploadComplete, isAiProcessingEnabled }:
               aiResult = await processImage({ photoDataUri: dataUri });
             } catch (error) {
               const errorMessage = (error as Error).message;
-              const isServiceUnavailableError = errorMessage.includes('503') || errorMessage.toLowerCase().includes('service unavailable');
-              if (isServiceUnavailableError) {
+              if (errorMessage.includes('503') || errorMessage.toLowerCase().includes('service unavailable')) {
                 toast({
                   title: `Servicio no disponible para ${file.name}`,
                   description: "Reintentando en 30 segundos...",
