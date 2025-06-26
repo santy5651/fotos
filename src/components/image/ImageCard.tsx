@@ -5,7 +5,7 @@ import type { ImageMetadata, Collection } from '@/types';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Heart, Shield, Trash2, RotateCcw, RotateCw, Tag, Loader2, ZoomIn, Edit3, CheckCircle2, AlertTriangle, Wand2, FileText, FilePenLine } from 'lucide-react'; 
+import { Heart, Shield, Trash2, RotateCcw, RotateCw, Tag, Loader2, ZoomIn, Edit3, CheckCircle2, AlertTriangle, Wand2, FileText, FilePenLine, ClipboardCopy } from 'lucide-react'; 
 import { useToast } from '@/hooks/use-toast';
 import { updateImage, deleteImage, db, blobToDataURL } from '@/lib/db'; 
 import NextImage from 'next/image';
@@ -196,6 +196,20 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
     }
   };
 
+  const handleCopyDescription = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!displayImage.description) {
+      toast({ variant: "destructive", title: "Error", description: "No hay descripción para copiar." });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(displayImage.description);
+      toast({ title: "Copiado", description: "Descripción copiada al portapapeles." });
+    } catch (err) {
+      toast({ variant: "destructive", title: "Error al Copiar", description: "No se pudo copiar la descripción." });
+    }
+  };
+
 
   if (!imageUrl) {
     return (
@@ -346,13 +360,29 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
             </div>
           )}
 
-          {!displayImage.isPotentialDuplicate && (
-            displayImage.hasDescription ? (
-              <p className="text-xs text-muted-foreground pt-1 leading-snug max-h-10 overflow-hidden text-ellipsis" title={displayImage.description}>
-                {displayImage.description}
-              </p>
-            ) : null
-          )}
+          {!displayImage.isPotentialDuplicate &&
+            displayImage.hasDescription && (
+              <div className="relative group/description pt-1">
+                <p className="text-xs text-muted-foreground leading-snug max-h-10 overflow-hidden text-ellipsis pr-7" title={displayImage.description || ''}>
+                  {displayImage.description}
+                </p>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="absolute -top-1 -right-1 h-7 w-7 opacity-0 group-hover/description:opacity-100 transition-opacity"
+                      onClick={handleCopyDescription}
+                      aria-label="Copiar descripción"
+                    >
+                      <ClipboardCopy className="h-3.5 w-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent><p>Copiar descripción</p></TooltipContent>
+                </Tooltip>
+              </div>
+            )
+          }
           
           {!displayImage.isPotentialDuplicate && (!displayImage.hasTags || !displayImage.hasDescription) && (
              <div className="pt-1 flex items-center">
@@ -465,3 +495,5 @@ export default function ImageCard({ image, onUpdate, isSelected, onToggleSelecti
     </>
   );
 }
+
+    
