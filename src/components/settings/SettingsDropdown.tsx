@@ -14,10 +14,11 @@ import {
   DropdownMenuPortal,
   DropdownMenuSubContent,
 } from '@/components/ui/dropdown-menu';
-import { Settings, Download, Upload, Trash2, Loader2, FileJson, UploadCloud, FileSpreadsheet, Wand2, Sun, Moon, Laptop } from 'lucide-react';
+import { Settings, Download, Upload, Trash2, Loader2, FileJson, UploadCloud, FileSpreadsheet, Wand2, Sun, Moon, Laptop, CheckCircle, AlertCircle, KeyRound } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useToast } from '@/hooks/use-toast';
 import { exportData, importData, deleteAllData, exportDataAsSingleJson, importDataFromJson, getTotalImageCount, exportDataAsCsv } from '@/lib/db';
+import { validateApiKey } from '@/ai/flows/validate-api-key-flow';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
@@ -40,6 +41,9 @@ export default function SettingsDropdown({ isAiProcessingEnabled, onAiProcessing
   const [isExportingCsv, setIsExportingCsv] = useState(false);
   const zipFileInputRef = useRef<HTMLInputElement>(null);
   const jsonFileInputRef = useRef<HTMLInputElement>(null);
+  
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [isKeyValidating, setIsKeyValidating] = useState(false);
 
   const handleExportZip = async () => {
     setIsExportingZip(true);
@@ -84,7 +88,6 @@ export default function SettingsDropdown({ isAiProcessingEnabled, onAiProcessing
     try {
       const csvData = await exportDataAsCsv();
       const totalImages = await getTotalImageCount();
-      // Add BOM for Excel compatibility with UTF-8
       const blob = new Blob([`\uFEFF${csvData}`], { type: 'text/csv;charset=utf-8;' });
       const formattedDate = new Date().toISOString().split('T')[0];
       saveAs(blob, `picstack_metadata_V1_${formattedDate}_${totalImages}images.csv`);
@@ -94,7 +97,6 @@ export default function SettingsDropdown({ isAiProcessingEnabled, onAiProcessing
     }
     setIsExportingCsv(false);
   };
-
 
   const handleTriggerZipImport = () => {
     if (zipFileInputRef.current) {
@@ -217,7 +219,27 @@ export default function SettingsDropdown({ isAiProcessingEnabled, onAiProcessing
     }
   };
 
-  const anyOperationInProgress = isImportingZip || isImportingJson || isExportingZip || isExportingJson || isExportingCsv;
+  const handleValidateKey = async () => {
+    if (!apiKeyInput) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Por favor, ingrese una clave de API para validar.' });
+      return;
+    }
+    setIsKeyValidating(true);
+    try {
+      const result = await validateApiKey({ apiKey: apiKeyInput });
+      if (result.success) {
+        toast({ title: 'Validación Exitosa', description: result.message, variant: 'default' });
+      } else {
+        toast({ title: 'Validación Fallida', description: result.message, variant: 'destructive', duration: 8000 });
+      }
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Error de Validación', description: 'Ocurrió un error inesperado.' });
+    } finally {
+      setIsKeyValidating(false);
+    }
+  };
+
+  const anyOperationInProgress = isImportingZip || isImportingJson || isExportingZip || isExportingJson || isExportingCsv || isKeyValidating;
 
   return (
     <>
@@ -245,7 +267,7 @@ export default function SettingsDropdown({ isAiProcessingEnabled, onAiProcessing
             <span className="sr-only">Settings</span>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-64">
+        <DropdownMenuContent align="end" className="w-72">
           <DropdownMenuLabel>App Settings</DropdownMenuLabel>
           <DropdownMenuSeparator />
            <DropdownMenuSub>
@@ -282,6 +304,37 @@ export default function SettingsDropdown({ isAiProcessingEnabled, onAiProcessing
               onCheckedChange={onAiProcessingToggle}
             />
           </DropdownMenuItem>
+
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>Gestión de Clave de API</DropdownMenuLabel>
+          <div className="px-2 py-1.5 text-xs text-muted-foreground">
+              Para usar las funciones de IA, añade tu clave de API de Google al archivo <code className="font-mono bg-muted p-0.5 rounded">.env</code> y reinicia el servidor.
+          </div>
+          <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+            <div className="w-full space-y-2">
+              <div className="flex items-center gap-2">
+                <KeyRound className="h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="password"
+                  placeholder="Pega tu clave para validarla"
+                  value={apiKeyInput}
+                  onChange={(e) => setApiKeyInput(e.target.value)}
+                  className="h-8"
+                  disabled={isKeyValidating}
+                />
+              </div>
+              <Button
+                onClick={handleValidateKey}
+                disabled={!apiKeyInput || isKeyValidating}
+                className="w-full h-8"
+                variant="secondary"
+              >
+                {isKeyValidating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Validar Clave
+              </Button>
+            </div>
+          </DropdownMenuItem>
+
           <DropdownMenuSeparator />
           <DropdownMenuLabel>Gestión de Datos</DropdownMenuLabel>
           <DropdownMenuItem onClick={handleExportZip} disabled={anyOperationInProgress}>
