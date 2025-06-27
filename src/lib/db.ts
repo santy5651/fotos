@@ -9,7 +9,7 @@ export class PicStackDexie extends Dexie {
   constructor() {
     super('PicStackDB');
     this.version(7).stores({
-      images: '++id, &file, name, *tags, createdAt, isFavorite, isProtected, *collectionIds, mimeType, isPotentialDuplicate, hasTags, hasDescription',
+      images: '++id, name, *tags, createdAt, isFavorite, isProtected, *collectionIds, mimeType, isPotentialDuplicate, hasTags, hasDescription',
       collections: '++id, name, parentId, createdAt',
     });
     this.version(6).stores({
@@ -147,7 +147,8 @@ export const getImages = async (filter?: {
   const searchTerm = filter?.searchTerm?.trim().toLowerCase();
   if (searchTerm) {
       const allCollections = await getCollections();
-      let baseImages = await db.images.where('isPotentialDuplicate').equals(false).toArray();
+      // Use .filter() for robustness against corrupted indexes instead of .where()
+      let baseImages = await db.images.filter(img => img.isPotentialDuplicate === false).toArray();
       
       const searchedImages = baseImages.filter(img => {
           if (img.name.toLowerCase().includes(searchTerm)) return true;
