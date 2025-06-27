@@ -33,7 +33,7 @@ export default function HomePage() {
 
   // Pagination and Layout States
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(4); // Default to 4
+  const [itemsPerPage, setItemsPerPage] = useState(24); // Default to 24
   const [numberOfColumns, setNumberOfColumns] = useState(NUM_COLUMNS_OPTIONS[2]); // Default to 4
   const [totalImagesForPagination, setTotalImagesForPagination] = useState(0);
 
@@ -47,8 +47,8 @@ export default function HomePage() {
         offset: (currentPage - 1) * itemsPerPage,
         limit: itemsPerPage,
       };
-      if (!reviewDuplicatesMode && !showUnassignedMode && !showUntaggedMode && !showUndescribedMode && currentCollectionId !== null) {
-        filter.collectionId = currentCollectionId;
+      if (!reviewDuplicatesMode) { // Collection filter does not apply in duplicate review mode
+          filter.collectionId = currentCollectionId;
       }
       if (searchTerm) {
         filter.searchTerm = searchTerm;
@@ -78,7 +78,6 @@ export default function HomePage() {
     if (showUnassignedMode) setShowUnassignedMode(false);
     if (showUntaggedMode) setShowUntaggedMode(false);
     if (showUndescribedMode) setShowUndescribedMode(false);
-    setSearchTerm('');
     resetPaginationAndSelection();
   }, [reviewDuplicatesMode, showUnassignedMode, showUntaggedMode, showUndescribedMode]);
 
@@ -98,7 +97,6 @@ export default function HomePage() {
       setShowUnassignedMode(false);
       setShowUntaggedMode(false);
       setShowUndescribedMode(false);
-      setSearchTerm('');
     }
     resetPaginationAndSelection();
   }, [reviewDuplicatesMode]);
@@ -111,7 +109,6 @@ export default function HomePage() {
       setReviewDuplicatesMode(false);
       setShowUntaggedMode(false);
       setShowUndescribedMode(false);
-      setSearchTerm('');
     }
     resetPaginationAndSelection();
   }, [showUnassignedMode]);
@@ -124,7 +121,6 @@ export default function HomePage() {
       setReviewDuplicatesMode(false);
       setShowUnassignedMode(false);
       setShowUndescribedMode(false);
-      setSearchTerm('');
     }
     resetPaginationAndSelection();
   }, [showUntaggedMode]);
@@ -137,7 +133,6 @@ export default function HomePage() {
       setReviewDuplicatesMode(false);
       setShowUnassignedMode(false);
       setShowUntaggedMode(false);
-      setSearchTerm('');
     }
     resetPaginationAndSelection();
   }, [showUndescribedMode]);
