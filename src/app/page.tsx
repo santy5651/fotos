@@ -15,7 +15,7 @@ import { processImage } from '@/ai/flows/process-image-flow';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from '@/components/ui/label';
 
-const ITEMS_PER_PAGE_OPTIONS = [2, 4, 6, 8, 10, 12, 20, 24, 50];
+const ITEMS_PER_PAGE_OPTIONS = [2, 4, 6, 8, 10, 12, 20, 24, 50, 100, 200, 300, 400, 500, 1000];
 const NUM_COLUMNS_OPTIONS = [2, 3, 4, 5, 6];
 
 export default function HomePage() {
