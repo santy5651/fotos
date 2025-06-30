@@ -114,15 +114,15 @@ export const getImages = async (filter?: {
     const searchTerm = filter?.searchTerm?.trim().toLowerCase();
     if (searchTerm) {
         imagesToShow = imagesToShow.filter(img => 
-            img.name.toLowerCase().includes(searchTerm) ||
-            img.tags?.some(tag => tag.toLowerCase().includes(searchTerm)) ||
-            img.description?.toLowerCase().includes(searchTerm)
+            (img.name && img.name.toLowerCase().includes(searchTerm)) ||
+            (img.tags?.some(tag => typeof tag === 'string' && tag.toLowerCase().includes(searchTerm))) ||
+            (img.description && img.description.toLowerCase().includes(searchTerm))
         );
     }
     
     imagesToShow.sort((a, b) => {
-        const nameA = a.name.toLowerCase();
-        const nameB = b.name.toLowerCase();
+        const nameA = (a.name || '').toLowerCase();
+        const nameB = (b.name || '').toLowerCase();
         if (nameA < nameB) return -1;
         if (nameA > nameB) return 1;
         return (a.id || 0) - (b.id || 0);
@@ -168,14 +168,14 @@ export const getImages = async (filter?: {
     
     const searchedImages = imagesToSearch.filter(img => {
       // Basic text search
-      if (img.name.toLowerCase().includes(searchTerm)) return true;
-      if (img.tags?.some(tag => tag.toLowerCase().includes(searchTerm))) return true;
-      if (img.description?.toLowerCase().includes(searchTerm)) return true;
+      if (img.name && img.name.toLowerCase().includes(searchTerm)) return true;
+      if (img.tags?.some(tag => typeof tag === 'string' && tag.toLowerCase().includes(searchTerm))) return true;
+      if (img.description && img.description.toLowerCase().includes(searchTerm)) return true;
       
       // `tag:` search syntax
       if (searchTerm.startsWith('tag:')) {
           const tagNameOnly = searchTerm.substring(4);
-          return img.tags?.some(tag => tag.toLowerCase() === tagNameOnly);
+          return img.tags?.some(tag => typeof tag === 'string' && tag.toLowerCase() === tagNameOnly);
       }
 
       // Collection name search
